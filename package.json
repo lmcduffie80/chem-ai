@@ -13,7 +13,9 @@
     "typecheck": "next typegen && tsc --noEmit",
     "db:seed:tsca": "tsx --env-file=.env.local scripts/load-tsca.ts",
     "enrich:cas": "tsx --env-file=.env.local scripts/enrich-cas.ts",
-    "sync:sds": "tsx --env-file=.env.local scripts/sync-sds.ts"
+    "sync:sds": "tsx --env-file=.env.local scripts/sync-sds.ts",
+    "load:chemexpo": "tsx --env-file=.env.local scripts/load-chemexpo.ts",
+    "load:reglist": "tsx --env-file=.env.local scripts/load-reglist.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.9.23",

@@ -9,8 +9,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { type ChemicalDetail, getChemicalByCas } from "@/lib/chemicals";
 import { describeH } from "@/lib/ghs";
-import { REGULATORY_LISTS } from "@/lib/reglists-meta";
+import { formatPctRange, manufacturerSdsSearchUrl, supplierRoleLabel } from "@/lib/product-sources";
+import { REGULATORY_LIST_CODES, REGULATORY_LISTS } from "@/lib/reglists-meta";
 import { AlternativesSection } from "./alternatives-section";
+import { VendorsSection } from "./vendors-section";
 import { WatchButton } from "./watch-button";
 
 export async function generateMetadata({ params }: PageProps<"/chemicals/[cas]">): Promise<Metadata> {
@@ -46,6 +48,13 @@ async function ChemicalContent({ params }: Pick<PageProps<"/chemicals/[cas]">, "
         <div className="space-y-6 lg:col-span-2">
           <Hazards chem={chem} />
           <Products chem={chem} />
+          <Suspense fallback={<Skeleton className="h-40 w-full" />}>
+            <VendorsSection
+              casRn={chem.casRn}
+              pubchemCid={chem.pubchemCid}
+              names={[chem.preferredName, ...chem.synonyms.map((s) => s.name)]}
+            />
+          </Suspense>
           <Card>
             <CardHeader>
               <CardTitle>Safer alternatives</CardTitle>
@@ -142,13 +151,19 @@ function Hazards({ chem }: { chem: ChemicalDetail }) {
       <CardHeader>
         <CardTitle>GHS hazards</CardTitle>
         <CardDescription>
-          {hazard ? `Source: ${hazard.source === "pubchem" ? "PubChem (ECHA C&L aggregate)" : hazard.source}` : "Not yet assessed"}
+          {hazard
+            ? `Source: ${hazard.source === "pubchem" ? "PubChem (ECHA C&L aggregate)" : hazard.source}`
+            : chem.ghsCheckedAt
+              ? "No classification reported"
+              : "Not yet assessed"}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {!hazard ? (
           <p className="text-muted-foreground text-sm">
-            No GHS classification has been loaded for this substance yet. Check the supplier SDS below.
+            {chem.ghsCheckedAt
+              ? "PubChem has no GHS hazard classification for this substance. Many substances, such as food-grade polymers, are not classified as hazardous; confirm with the manufacturer's SDS."
+              : "Hazard data for this substance has not been loaded yet. Check the manufacturer's SDS below."}
           </p>
         ) : (
           <>
@@ -181,21 +196,40 @@ function Hazards({ chem }: { chem: ChemicalDetail }) {
 }
 
 function Products({ chem }: { chem: ChemicalDetail }) {
+  const total = Math.max(chem.totalProductCount, chem.products.length);
   return (
     <Card>
       <CardHeader>
         <CardTitle>Products, suppliers &amp; SDS</CardTitle>
-        <CardDescription>{chem.products.length} commercial products contain this substance.</CardDescription>
+        <CardDescription>
+          {total === 0
+            ? "No products in the Chemspace catalog list this ingredient yet."
+            : `${total.toLocaleString()} product formulations reported to EPA list this ingredient${
+                chem.products.length < total ? `; the ${chem.products.length} most recent are shown` : ""
+              }. Click Find SDS for the manufacturer's current sheet.`}
+        </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        {chem.productCategories.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {chem.productCategories.slice(0, 12).map((c) => (
+              <Badge key={`${c.source}:${c.category}`} variant="secondary" className="font-normal">
+                {c.category} · {c.productCount.toLocaleString()}
+              </Badge>
+            ))}
+          </div>
+        )}
         {chem.products.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No supplier products are linked to this CAS number yet.</p>
+          <p className="text-muted-foreground text-sm">
+            Product listings come from EPA ChemExpo and supplier SDS feeds. See “Where to buy” for suppliers selling
+            this chemical, or upload your own SDS in a Team workspace.
+          </p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Product</TableHead>
-                <TableHead>Supplier</TableHead>
+                <TableHead>Maker / source</TableHead>
                 <TableHead>Content</TableHead>
                 <TableHead>SDS</TableHead>
               </TableRow>
@@ -205,27 +239,35 @@ function Products({ chem }: { chem: ChemicalDetail }) {
                 const sds = chem.sdsDocuments.find((d) => d.productId === p.productId);
                 return (
                   <TableRow key={p.productId}>
-                    <TableCell>
+                    <TableCell className="max-w-xs min-w-48 whitespace-normal">
                       <Link href={`/products/${p.productId}`} className="font-medium hover:underline">
                         {p.productName}
                       </Link>
-                      <div className="text-muted-foreground text-xs">{[p.sku, p.grade, p.purity].filter(Boolean).join(" · ")}</div>
+                      <div className="text-muted-foreground text-xs">
+                        {[p.category, p.sku, p.grade, p.purity, p.documentDate?.slice(0, 4)].filter(Boolean).join(" · ")}
+                      </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="whitespace-normal">
+                      <span className="text-muted-foreground text-xs">{supplierRoleLabel(p.supplierKind)} </span>
                       <Link href={`/suppliers/${p.supplierId}`} className="hover:underline">
                         {p.supplierName}
                       </Link>
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {p.minPct !== null || p.maxPct !== null ? `${p.minPct ?? 0}–${p.maxPct ?? 100}%` : "—"}
-                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{formatPctRange(p.minPct, p.maxPct)}</TableCell>
                     <TableCell>
                       {sds ? (
                         <Link href={`/sds/${sds.id}`} className="text-sm hover:underline">
                           {sds.revisionDate ?? "View"}
                         </Link>
                       ) : (
-                        <span className="text-muted-foreground text-sm">—</span>
+                        <a
+                          href={manufacturerSdsSearchUrl(p.productName, p.supplierName, p.supplierKind)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm whitespace-nowrap underline-offset-4 hover:underline"
+                        >
+                          Find SDS ↗
+                        </a>
                       )}
                     </TableCell>
                   </TableRow>
@@ -247,7 +289,9 @@ function Regulatory({ chem }: { chem: ChemicalDetail }) {
       </CardHeader>
       <CardContent>
         {chem.listings.length === 0 ? (
-          <p className="text-muted-foreground text-sm">Not on any tracked list (SARA 313, CERCLA, HAP, Prop 65, RCRA).</p>
+          <p className="text-muted-foreground text-sm">
+            Not on any tracked list ({REGULATORY_LIST_CODES.map((c) => REGULATORY_LISTS[c].label).join(", ")}).
+          </p>
         ) : (
           <ul className="space-y-3 text-sm">
             {chem.listings.map((l) => (

@@ -43,6 +43,21 @@ const SOURCES = [
     terms: "Federal lists are public domain. Proposition 65 is published by California OEHHA.",
   },
   {
+    name: "EPA ChemExpo — Chemicals and Products Database (CPDat)",
+    url: "https://comptox.epa.gov/chemexpo/",
+    refresh: "Weekly",
+    use: "Consumer and commercial product formulations: product names, manufacturers, product categories and reported ingredient weight fractions, plus EPA pesticide inert-ingredient lists. Chemspace stores the most recent products per chemical and counts all of them by category.",
+    terms:
+      "U.S. Government work; public domain. EPA compiled CPDat from manufacturer SDS and ingredient disclosures, retailer data and third-party databases (e.g. EWG, SIRI). Compositions may be out of date; consult the manufacturer's current SDS.",
+  },
+  {
+    name: "PubChem chemical vendor listings",
+    url: "https://pubchem.ncbi.nlm.nih.gov/docs/vendors",
+    refresh: "Weekly, on demand",
+    use: "\"Where to buy\" links to supplier catalog pages, where each supplier publishes its own SDS.",
+    terms: "Listings are deposited by the vendors themselves. Chemspace links to vendor pages and does not copy their SDS.",
+  },
+  {
     name: "Licensed SDS & supplier feed",
     url: null,
     refresh: "Daily",
@@ -58,8 +73,8 @@ export default function DataSourcesPage() {
       <div className="space-y-2">
         <h1 className="text-3xl font-semibold">Data sources & attribution</h1>
         <p className="text-muted-foreground">
-          Chemspace combines public regulatory data with a licensed SDS and supplier feed. Below is every source, how
-          we use it, and how often it refreshes.
+          Chemspace combines public regulatory and product data with links to manufacturers&apos; own SDS. Below is
+          every source, how we use it, and how often it refreshes.
         </p>
       </div>
 

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getProduct } from "@/lib/chemicals";
+import { CHEMEXPO_SOURCE, formatPctRange, manufacturerSdsSearchUrl, supplierRoleLabel } from "@/lib/product-sources";
 
 export async function generateMetadata({ params }: PageProps<"/products/[id]">): Promise<Metadata> {
   const { id } = await params;
@@ -33,16 +34,33 @@ async function ProductContent({ params }: Pick<PageProps<"/products/[id]">, "par
     <div className="space-y-6">
       <div className="space-y-1">
         <p className="text-muted-foreground text-sm">
-          Product from{" "}
+          {supplierRoleLabel(product.supplier.kind)}{" "}
           <Link href={`/suppliers/${product.supplier.id}`} className="hover:underline">
             {product.supplier.name}
           </Link>
         </p>
         <h1 className="text-2xl font-semibold">{product.name}</h1>
         <p className="text-muted-foreground text-sm">
-          {[product.sku && `SKU ${product.sku}`, product.grade, product.purity].filter(Boolean).join(" · ")}
+          {[
+            product.category,
+            product.sku && `SKU ${product.sku}`,
+            product.grade,
+            product.purity,
+            product.documentDate && `Document dated ${product.documentDate}`,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </p>
         {product.description && <p className="text-sm">{product.description}</p>}
+        {product.source === CHEMEXPO_SOURCE && (
+          <p className="text-muted-foreground text-xs">
+            Composition reported to{" "}
+            <a href={product.sourceUrl ?? "https://comptox.epa.gov/chemexpo/"} target="_blank" rel="noreferrer" className="underline-offset-4 hover:underline">
+              EPA ChemExpo (CPDat) ↗
+            </a>{" "}
+            by {product.supplier.name}. Formulations change; confirm against the manufacturer&apos;s current SDS.
+          </p>
+        )}
       </div>
 
       <Card>
@@ -72,7 +90,7 @@ async function ProductContent({ params }: Pick<PageProps<"/products/[id]">, "par
                       "Proprietary"
                     )}
                   </TableCell>
-                  <TableCell>{c.minPct !== null || c.maxPct !== null ? `${c.minPct ?? 0}–${c.maxPct ?? 100}%` : "—"}</TableCell>
+                  <TableCell>{formatPctRange(c.minPct, c.maxPct)}</TableCell>
                   <TableCell>
                     <HazardBadge score={c.hazardScore} />
                   </TableCell>
@@ -89,7 +107,17 @@ async function ProductContent({ params }: Pick<PageProps<"/products/[id]">, "par
         </CardHeader>
         <CardContent>
           {product.sdsDocuments.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No SDS on file.</p>
+            <p className="text-muted-foreground text-sm">
+              Chemspace doesn&apos;t hold a copy of this SDS.{" "}
+              <a
+                href={manufacturerSdsSearchUrl(product.name, product.supplier.name, product.supplier.kind)}
+                target="_blank"
+                rel="noreferrer"
+                className="text-foreground underline-offset-4 hover:underline"
+              >
+                Find the manufacturer&apos;s SDS ↗
+              </a>
+            </p>
           ) : (
             <ul className="space-y-1 text-sm">
               {product.sdsDocuments.map((d) => (

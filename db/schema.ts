@@ -45,6 +45,7 @@ export const regulatoryListCode = pgEnum("regulatory_list_code", [
   "HAP",
   "PROP65",
   "RCRA",
+  "PEST_INERT",
 ]);
 
 export const alternativeMethod = pgEnum("alternative_method", ["scil", "similarity", "ai"]);
@@ -60,6 +61,7 @@ export const ingestSource = pgEnum("ingest_source", [
   "sds_feed",
   "embeddings",
   "alerts",
+  "chemexpo",
 ]);
 export const runStatus = pgEnum("run_status", ["running", "succeeded", "failed"]);
 export const changeType = pgEnum("change_type", ["added", "removed", "updated"]);
@@ -200,6 +202,8 @@ export const suppliers = pgTable(
     source: text("source").notNull(),
     externalId: text("external_id").notNull(),
     name: text("name").notNull(),
+    /** "manufacturer" for companies that make or sell the product; "database" for aggregators such as SIRI or EWG. */
+    kind: text("kind").notNull().default("manufacturer"),
     country: text("country"),
     website: text("website"),
     contacts: jsonb("contacts").$type<SupplierContact[]>().notNull().default([]),
@@ -226,6 +230,11 @@ export const products = pgTable(
     grade: text("grade"),
     purity: text("purity"),
     description: text("description"),
+    /** Product use category, e.g. "Personal care › body hygiene › body wash". */
+    category: text("category"),
+    documentDate: date("document_date"),
+    /** Public page describing where the record came from. */
+    sourceUrl: text("source_url"),
     ...timestamps,
   },
   (t) => [
@@ -252,6 +261,20 @@ export const productComponents = pgTable(
     index("product_components_product_idx").on(t.productId),
     index("product_components_chemical_idx").on(t.chemicalId),
   ],
+);
+
+/** Full product counts per use category; `products` only holds a recent sample per chemical. */
+export const chemicalProductCategories = pgTable(
+  "chemical_product_categories",
+  {
+    chemicalId: integer("chemical_id")
+      .notNull()
+      .references(() => chemicals.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    category: text("category").notNull(),
+    productCount: integer("product_count").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.chemicalId, t.source, t.category] })],
 );
 
 export type SdsSection = { number: number; title: string; content: string };

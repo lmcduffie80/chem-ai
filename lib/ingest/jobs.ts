@@ -1,6 +1,7 @@
 import { start } from "workflow/api";
 import {
   alertsWorkflow,
+  chemexpoWorkflow,
   comptoxWorkflow,
   embeddingsWorkflow,
   ghsWorkflow,
@@ -17,6 +18,7 @@ export const INGEST_JOBS = {
   reglists: { label: "Regulatory lists", workflow: regulatoryListsWorkflow },
   scil: { label: "Safer Chemical Ingredients List", workflow: scilWorkflow },
   sds: { label: "Licensed SDS & supplier feed", workflow: sdsFeedWorkflow },
+  chemexpo: { label: "EPA ChemExpo products", workflow: chemexpoWorkflow },
   embeddings: { label: "Chemical embeddings", workflow: embeddingsWorkflow },
   alerts: { label: "Regulatory change alerts", workflow: alertsWorkflow },
 } as const;

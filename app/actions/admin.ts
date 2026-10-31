@@ -8,7 +8,7 @@ import { getViewer } from "@/lib/auth";
 import { isIngestJob, startIngestJob } from "@/lib/ingest/jobs";
 import { REGULATORY_LIST_CODES } from "@/lib/reglists-meta";
 
-const SOURCE_KEYS = ["tsca", "scil", ...REGULATORY_LIST_CODES.map((c) => `reglist:${c}`)];
+const SOURCE_KEYS = ["tsca", "scil", "chemexpo", ...REGULATORY_LIST_CODES.map((c) => `reglist:${c}`)];
 const MAX_SOURCE_BYTES = 100 * 1024 * 1024;
 
 async function adminId() {

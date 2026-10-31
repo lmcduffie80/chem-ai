@@ -25,6 +25,7 @@ async function Ingestion() {
   const sources = [
     { key: "tsca", label: "EPA TSCA Inventory", envVar: "TSCA_INVENTORY_URL" },
     { key: "scil", label: "Safer Chemical Ingredients List", envVar: "SCIL_CSV_URL" },
+    { key: "chemexpo", label: "EPA ChemExpo composition (zip or CSV)", envVar: "CHEMEXPO_COMPOSITION_URL" },
     ...REGULATORY_LIST_CODES.map((code) => ({
       key: `reglist:${code}`,
       label: REGULATORY_LISTS[code].label,

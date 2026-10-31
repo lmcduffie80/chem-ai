@@ -48,13 +48,15 @@ See `.env.example` for every variable. Without Clerk keys from the Vercel integr
 
 ### Scheduled ingestion
 
-`vercel.json` schedules `/api/cron/{sds,tsca,reglists,scil,comptox,ghs,embeddings,alerts}`. Each starts a durable workflow (`workflows/ingest.ts`) and writes an `ingest_runs` row. Cron requests must carry `Authorization: Bearer $CRON_SECRET`. Platform admins can also trigger jobs and upload source-file overrides at `/admin/ingestion`.
+`vercel.json` schedules `/api/cron/{sds,tsca,reglists,scil,comptox,ghs,embeddings,alerts,chemexpo}`. Each starts a durable workflow (`workflows/ingest.ts`) and writes an `ingest_runs` row. Cron requests must carry `Authorization: Bearer $CRON_SECRET`. Platform admins can also trigger jobs and upload source-file overrides at `/admin/ingestion`.
 
 Data sources that need configuration:
 
 - **CompTox:** `EPA_CCTE_API_KEY` (free, request from EPA CCTE).
 - **Regulatory lists:** set `REGLIST_*_URL` to CSV exports, or upload files in the admin console.
 - **SCIL:** defaults to EPA's Safer Ingredients page; no configuration needed.
+- **Products (EPA ChemExpo/CPDat):** downloads EPA's public composition file weekly (about 1 GB unzipped, 400k products) and keeps the 25 most recent products per chemical, plus per-category counts for all of them. EPA's server is slow; for the first load, download the zip yourself and run `pnpm load:chemexpo path/to/file.zip`. The pesticide inert list (`PEST_INERT`) comes from ChemExpo's list-presence file; load it with `pnpm load:reglist PEST_INERT`.
+- **Where to buy:** PubChem vendor listings, fetched on demand and cached for a week. No configuration needed.
 - **SDS feed:** `SDS_PROVIDER=generic-rest` with `SDS_PROVIDER_BASE_URL`/`SDS_PROVIDER_API_KEY`. The adapter contract is documented in `lib/sds/providers/generic-rest.ts`; write a thin shim for your vendor or add a new provider in `lib/sds/`. `SDS_PROVIDER=fixture` gives demo data and is refused in production.
 - **AI:** AI Gateway via OIDC. Alternatives use `AI_TEXT_MODEL`; embeddings (`AI_EMBEDDING_MODEL`) are optional but improve candidate recall. Free-tier gateway accounts cannot use Anthropic models or OpenAI embeddings.
 

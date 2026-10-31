@@ -20,8 +20,12 @@ export function HazardBadge({ score }: { score: number | null | undefined }) {
 }
 
 export function ListBadge({ code }: { code: RegulatoryListCode }) {
+  const style =
+    REGULATORY_LISTS[code].kind === "use"
+      ? "border-violet-500/40 bg-violet-500/10 text-violet-300"
+      : "border-sky-500/40 bg-sky-500/10 text-sky-300";
   return (
-    <Badge variant="outline" className="border-sky-500/40 bg-sky-500/10 text-sky-300" title={REGULATORY_LISTS[code].description}>
+    <Badge variant="outline" className={style} title={REGULATORY_LISTS[code].description}>
       {REGULATORY_LISTS[code].label}
     </Badge>
   );

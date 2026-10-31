@@ -1,5 +1,7 @@
 import { invalidateTags } from "./invalidate";
+import { parse as parseStream } from "csv-parse";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { Readable } from "node:stream";
 import { db, schema } from "@/db";
 import type { IngestStats } from "@/db/schema";
 import { normalizeCas } from "@/lib/cas";
@@ -17,17 +19,11 @@ function detailsFor(record: CsvRecord, casCol: string): Record<string, string> {
   return details;
 }
 
-export async function ingestRegulatoryList(listCode: RegulatoryListCode): Promise<IngestStats> {
-  "use step";
-  const config = REGULATORY_LISTS[listCode];
-  const source = await loadSourceBytes(`reglist:${listCode}`, process.env[config.envVar]);
-  if (!source) return { skipped: 1 };
-
-  const records = parseCsv(bytesToCsvText(source.bytes));
+function collectCsvList(listCode: RegulatoryListCode, bytes: Uint8Array) {
+  const records = parseCsv(bytesToCsvText(bytes));
   const casCol = findColumn(records[0], ["CAS", "CASRN", "CAS RN", "CAS Number", "CAS No.", /cas/i]);
   if (!casCol) throw new Error(`${listCode}: no CAS column found`);
 
-  const issues: IssueInput[] = [];
   const byCas = new Map<string, Record<string, string>>();
   for (const record of records) {
     // Some lists put several CAS numbers in one cell, e.g. "71-43-2; 108-88-3".
@@ -36,6 +32,42 @@ export async function ingestRegulatoryList(listCode: RegulatoryListCode): Promis
       if (cas) byCas.set(cas, detailsFor(record, casCol));
     }
   }
+  return byCas;
+}
+
+/** EPA's pesticide inert ingredient lists, as compiled in ChemExpo's list-presence download. */
+async function collectPesticideInerts(bytes: Uint8Array) {
+  const titlesByCas = new Map<string, Set<string>>();
+  const parser = Readable.from([Buffer.from(bytes)]).pipe(
+    parseStream({ columns: true, bom: true, relax_column_count: true, relax_quotes: true, skip_empty_lines: true }),
+  );
+  for await (const row of parser as AsyncIterable<CsvRecord>) {
+    if (!/environmental protection agency/i.test(row["Data Source"] ?? "")) continue;
+    if (!/inert_ingredient/i.test(row["Keyword Set"] ?? "")) continue;
+    const cas = normalizeCas(row["Curated CAS"] || row["Raw CAS"]);
+    if (!cas) continue;
+    const titles = titlesByCas.get(cas) ?? new Set<string>();
+    titles.add((row["Data Document Title"] ?? "").trim());
+    titlesByCas.set(cas, titles);
+  }
+  if (titlesByCas.size === 0) throw new Error("PEST_INERT: no EPA inert ingredient rows found in the source file");
+
+  const byCas = new Map<string, Record<string, string>>();
+  for (const [cas, titles] of titlesByCas) {
+    byCas.set(cas, { Lists: [...titles].filter(Boolean).sort().join("; ").slice(0, 500), Source: "U.S. EPA via EPA ChemExpo" });
+  }
+  return byCas;
+}
+
+export async function ingestRegulatoryList(listCode: RegulatoryListCode): Promise<IngestStats> {
+  "use step";
+  const config = REGULATORY_LISTS[listCode];
+  const source = await loadSourceBytes(`reglist:${listCode}`, process.env[config.envVar] || config.defaultUrl);
+  if (!source) return { skipped: 1 };
+
+  const issues: IssueInput[] = [];
+  const byCas =
+    listCode === "PEST_INERT" ? await collectPesticideInerts(source.bytes) : collectCsvList(listCode, source.bytes);
 
   const casList = [...byCas.keys()];
   const idByCas = new Map<string, number>();

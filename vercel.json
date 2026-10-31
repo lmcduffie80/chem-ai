@@ -5,6 +5,7 @@
     { "path": "/api/cron/tsca", "schedule": "0 3 * * 0" },
     { "path": "/api/cron/reglists", "schedule": "0 4 * * 0" },
     { "path": "/api/cron/scil", "schedule": "30 4 * * 0" },
+    { "path": "/api/cron/chemexpo", "schedule": "0 8 * * 6" },
     { "path": "/api/cron/comptox", "schedule": "0 5 * * *" },
     { "path": "/api/cron/ghs", "schedule": "0 6 * * *" },
     { "path": "/api/cron/embeddings", "schedule": "0 7 * * *" },

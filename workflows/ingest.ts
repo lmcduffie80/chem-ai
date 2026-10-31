@@ -1,4 +1,11 @@
 import { sendRegulatoryAlerts } from "@/lib/alerts";
+import {
+  extractChemExpoProducts,
+  planChemExpoSample,
+  pruneChemExpo,
+  stageChemExpo,
+  upsertChemExpoChunk,
+} from "@/lib/ingest/chemexpo";
 import { enrichFromCompTox, selectChemicalsToEnrich } from "@/lib/ingest/comptox";
 import { embedChemicals, selectChemicalsToEmbed } from "@/lib/ingest/embeddings";
 import { fetchGhsBatch, selectChemicalsForGhs } from "@/lib/ingest/pubchem";
@@ -130,6 +137,27 @@ export async function embeddingsWorkflow(trigger: string, maxBatches = 50) {
       if (ids.length === 0) break;
       stats = mergeStats(stats, await embedChemicals(ids));
     }
+    await finishRun(runId, stats);
+    return stats;
+  } catch (error) {
+    await failRun(runId, errorMessage(error), stats);
+    throw error;
+  }
+}
+
+export async function chemexpoWorkflow(trigger: string) {
+  "use workflow";
+  const runId = await startRun("chemexpo", trigger);
+  let stats: IngestStats = {};
+  try {
+    const { pathname } = await stageChemExpo();
+    const plan = await planChemExpoSample(pathname);
+    stats = mergeStats(stats, plan.stats);
+    const chunkPaths = await extractChemExpoProducts(pathname, plan.selectedPath);
+    for (const chunkPath of chunkPaths) {
+      stats = mergeStats(stats, await upsertChemExpoChunk(chunkPath));
+    }
+    stats = mergeStats(stats, await pruneChemExpo(runId));
     await finishRun(runId, stats);
     return stats;
   } catch (error) {

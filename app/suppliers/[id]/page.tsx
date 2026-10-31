@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSupplier } from "@/lib/chemicals";
+import { CHEMEXPO_SOURCE } from "@/lib/product-sources";
 
 export async function generateMetadata({ params }: PageProps<"/suppliers/[id]">): Promise<Metadata> {
   const { id } = await params;
@@ -31,7 +32,10 @@ async function SupplierContent({ params }: Pick<PageProps<"/suppliers/[id]">, "p
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <p className="text-muted-foreground text-sm">Supplier</p>
+        <p className="text-muted-foreground text-sm">
+          {supplier.kind === "database" ? "Product database" : supplier.kind === "retailer" ? "Retailer" : "Manufacturer"}
+          {supplier.source === CHEMEXPO_SOURCE && " · via EPA ChemExpo"}
+        </p>
         <h1 className="text-2xl font-semibold">{supplier.name}</h1>
         <div className="flex flex-wrap gap-1.5">
           {supplier.country && <Badge variant="outline">{supplier.country}</Badge>}
