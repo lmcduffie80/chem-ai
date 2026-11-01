@@ -15,7 +15,10 @@
     "enrich:cas": "tsx --env-file=.env.local scripts/enrich-cas.ts",
     "sync:sds": "tsx --env-file=.env.local scripts/sync-sds.ts",
     "load:chemexpo": "tsx --env-file=.env.local scripts/load-chemexpo.ts",
-    "load:reglist": "tsx --env-file=.env.local scripts/load-reglist.ts"
+    "load:reglist": "tsx --env-file=.env.local scripts/load-reglist.ts",
+    "test": "vitest run",
+    "check:alternates": "tsx --env-file=.env.local scripts/check-alternates.ts",
+    "db:size": "tsx --env-file=.env.local scripts/db-size.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.9.23",
@@ -56,7 +59,8 @@
     "eslint-config-next": "16.4.3",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.0.5"
   },
   "packageManager": "pnpm@10.33.0"
 }
