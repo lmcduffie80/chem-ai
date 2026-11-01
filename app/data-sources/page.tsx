@@ -58,12 +58,12 @@ const SOURCES = [
     terms: "Listings are deposited by the vendors themselves. Allochemix links to vendor pages and does not copy their SDS.",
   },
   {
-    name: "Licensed SDS & supplier feed",
+    name: "Manufacturer SDS",
     url: null,
-    refresh: "Daily",
-    use: "Supplier profiles, products, compositions and original Safety Data Sheets.",
+    refresh: "On demand",
+    use: "Each product page links to a search for the manufacturer's current Safety Data Sheet. Allochemix does not host those PDFs.",
     terms:
-      "Redistributed to subscribers under a commercial license. SDS documents remain the property of their manufacturers; always consult the original PDF.",
+      "Manufacturer SDS documents are copyrighted. Allochemix links out rather than storing or redistributing copies. Team workspaces may upload their own SDS for internal use only.",
   },
 ];
 
