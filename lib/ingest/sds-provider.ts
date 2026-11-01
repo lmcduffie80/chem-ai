@@ -15,6 +15,7 @@ const SDS_MAX_AGE_YEARS = 5;
 export async function listSdsUpdates(cursor: string | undefined) {
   "use step";
   const provider = getSdsProvider();
+  if (!provider) return { productIds: [] };
   const since = await lastSuccessfulRun("sds_feed");
   return provider.listUpdates(since, cursor);
 }
@@ -116,6 +117,7 @@ export async function syncProducts(
 ): Promise<{ stats: IngestStats; sdsToFetch: { id: string; providerHash: string | null }[] }> {
   "use step";
   const provider = getSdsProvider();
+  if (!provider) return { stats: { skipped: productExternalIds.length }, sdsToFetch: [] };
   const issues: IssueInput[] = [];
   const sdsToFetch: { id: string; providerHash: string | null }[] = [];
   const touchedCas: string[] = [];
@@ -190,6 +192,7 @@ export async function syncProducts(
 export async function fetchAndParseSds(sdsDocumentId: string, providerHash: string | null = null): Promise<IngestStats> {
   "use step";
   const provider = getSdsProvider();
+  if (!provider) return { skipped: 1 };
   const [doc] = await db.select().from(schema.sdsDocuments).where(eq(schema.sdsDocuments.id, sdsDocumentId));
   if (!doc) return { skipped: 1 };
 

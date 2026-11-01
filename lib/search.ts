@@ -11,7 +11,16 @@ export type SearchFilters = {
   maxHazardScore?: number;
   functionClass?: string;
   tscaActiveOnly?: boolean;
+  /** Chemicals used in agriculture / pesticide products, or listed as EPA pesticide inerts. */
+  agChem?: boolean;
 };
+
+/** ChemExpo categories that count as agricultural chemistry. */
+const AG_PRODUCT_CATEGORY = sql`(
+  p.category ~* ${"^(Agriculture|Pesticides)\\b"}
+  or p.category ~* ${"\\b(herbicide|fungicide|insecticide|fertilizer|rodenticide)\\b"}
+  or p.category ilike ${"% › pesticide%"}
+)`;
 
 export type SearchResult = {
   id: number;
@@ -61,6 +70,19 @@ function filterSql(filters: SearchFilters): SQL {
   if (filters.maxHazardScore !== undefined) parts.push(sql`coalesce(c.hazard_score, 0) <= ${filters.maxHazardScore}`);
   if (filters.functionClass) parts.push(sql`${filters.functionClass} = any(c.function_classes)`);
   if (filters.tscaActiveOnly) parts.push(sql`c.tsca_status = 'ACTIVE'`);
+  if (filters.agChem) {
+    parts.push(sql`(
+      exists (
+        select 1 from product_components pc
+        join products p on p.id = pc.product_id
+        where pc.chemical_id = c.id and ${AG_PRODUCT_CATEGORY}
+      )
+      or exists (
+        select 1 from regulatory_listings rl
+        where rl.chemical_id = c.id and rl.list_code = 'PEST_INERT'
+      )
+    )`);
+  }
   return sql.join(parts, sql` and `);
 }
 
@@ -89,7 +111,7 @@ export async function searchChemicals(query: string, filters: SearchFilters = {}
   cacheTag("search");
 
   const q = query.trim();
-  if (!q && !filters.lists?.length && !filters.functionClass) return [];
+  if (!q && !filters.lists?.length && !filters.functionClass && !filters.agChem) return [];
   const cas = normalizeCas(q);
 
   const escaped = q.replace(/[%_\\]/g, "\\$&");
@@ -160,35 +182,49 @@ export async function searchProducts(
   query: string,
   limit = 25,
   offset = 0,
+  filters: Pick<SearchFilters, "agChem"> = {},
 ): Promise<{ total: number; results: ProductSearchResult[] }> {
   "use cache";
   cacheLife("hours");
   cacheTag("search");
 
   const q = query.trim().slice(0, 200);
-  if (!q || normalizeCas(q)) return { total: 0, results: [] };
+  const agOnly = Boolean(filters.agChem);
+  if ((!q && !agOnly) || normalizeCas(q)) return { total: 0, results: [] };
   const escape = (s: string) => s.replace(/[%_\\]/g, "\\$&");
-  const words = q.split(/\s+/).slice(0, MAX_PRODUCT_QUERY_WORDS);
-  const allWords = sql.join(
-    words.map((w) => sql`(p.name ilike ${`%${escape(w)}%`} or s.name ilike ${`%${escape(w)}%`})`),
-    sql` and `,
-  );
+  const words = q ? q.split(/\s+/).slice(0, MAX_PRODUCT_QUERY_WORDS) : [];
+  const allWords =
+    words.length > 0
+      ? sql.join(
+          words.map((w) => sql`(p.name ilike ${`%${escape(w)}%`} or s.name ilike ${`%${escape(w)}%`})`),
+          sql` and `,
+        )
+      : sql`true`;
+  const agFilter = agOnly ? sql`and ${AG_PRODUCT_CATEGORY}` : sql``;
 
   const { rows } = await db.execute<ProductSearchResult & { total: number }>(sql`
     with cand as (
-      select p.id, 100.0 as score from products p where p.name ilike ${escape(q)}
+      ${
+        q
+          ? sql`
+      select p.id, 100.0 as score from products p where p.name ilike ${escape(q)} ${agFilter}
       union all
-      select p.id, 50 + 5.0 / (1 + length(p.name) / 10.0) from products p where p.name ilike ${`${escape(q)}%`}
+      select p.id, 50 + 5.0 / (1 + length(p.name) / 10.0) from products p where p.name ilike ${`${escape(q)}%`} ${agFilter}
       union all
       select p.id, 20 + 5 * word_similarity(${q}, p.name)
       from products p join suppliers s on s.id = p.supplier_id
-      where ${allWords}
+      where ${allWords} ${agFilter}
       union all
-      select p.id, 10 * word_similarity(${q}, p.name) from products p where ${q} <% p.name
+      select p.id, 10 * word_similarity(${q}, p.name) from products p where ${q} <% p.name ${agFilter}
       union all
       select p.id, 8 * similarity(s.name, ${q})
       from products p join suppliers s on s.id = p.supplier_id
-      where s.name % ${q}
+      where s.name % ${q} ${agFilter}
+          `
+          : sql`
+      select p.id, 1.0 as score from products p where ${AG_PRODUCT_CATEGORY}
+          `
+      }
     ),
     ranked as (select id, max(score) as score from cand group by id)
     select p.id, p.name, p.category, p.document_date::text as "documentDate",

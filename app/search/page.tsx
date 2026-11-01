@@ -41,6 +41,7 @@ function parseFilters(sp: Params): SearchFilters {
     lists: list && list in REGULATORY_LISTS ? [list as RegulatoryListCode] : undefined,
     maxHazardScore: maxHazard ? Number(maxHazard) : undefined,
     tscaActiveOnly: first(sp.active) === "1",
+    agChem: first(sp.ag) === "1",
   };
 }
 
@@ -63,21 +64,28 @@ async function SearchContent({ searchParams }: Pick<PageProps<"/search">, "searc
   const filters = parseFilters(sp);
 
   return (
-    <div className={mode === "products" ? "space-y-6" : "grid gap-8 lg:grid-cols-[220px_1fr]"}>
-      {mode !== "products" && (
-        <aside className="space-y-6 text-sm">
-          <FilterLinks q={q} sp={sp} />
-        </aside>
-      )}
+    <div className="grid gap-8 lg:grid-cols-[220px_1fr]">
+      <aside className="space-y-6 text-sm">
+        <FilterLinks q={q} sp={sp} />
+      </aside>
       <div className="space-y-6">
-        <SearchBox defaultValue={q} />
-        <ModeTabs q={q} mode={mode} />
+        <SearchBox
+          defaultValue={q}
+          preserve={{
+            mode: mode === "standard" ? undefined : mode,
+            ag: filters.agChem ? "1" : undefined,
+            list: first(sp.list),
+            maxHazard: first(sp.maxHazard),
+            active: first(sp.active) === "1" ? "1" : undefined,
+          }}
+        />
+        <ModeTabs q={q} mode={mode} sp={sp} />
         {mode === "ai" ? (
           <Suspense fallback={<ResultsSkeleton />}>
             <AiResults q={q} filters={filters} />
           </Suspense>
         ) : mode === "products" ? (
-          <ProductResults q={q} page={page} sp={sp} />
+          <ProductResults q={q} page={page} sp={sp} filters={filters} />
         ) : (
           <StandardResults q={q} filters={filters} page={page} sp={sp} />
         )}
@@ -91,18 +99,23 @@ function pageHref(sp: Params, page: number) {
 }
 
 async function StandardResults({ q, filters, page, sp }: { q: string; filters: SearchFilters; page: number; sp: Params }) {
-  if (!q && !filters.lists?.length) {
+  if (!q && !filters.lists?.length && !filters.agChem) {
     return (
       <p className="text-muted-foreground">
-        Enter a product name, a maker, a CAS number (e.g. 67-64-1), a chemical name, or a synonym.
+        Enter a product name, a maker, a CAS number (e.g. 67-64-1), a chemical name, or a synonym — or turn on Ag Chem.
       </p>
     );
   }
   const [results, products] = await Promise.all([
     searchChemicals(q, filters, PAGE_SIZE + 1, (page - 1) * PAGE_SIZE),
-    page === 1 ? searchProducts(q, PRODUCT_PREVIEW) : null,
+    page === 1 ? searchProducts(q, PRODUCT_PREVIEW, 0, filters) : null,
   ]);
   const hasMore = results.length > PAGE_SIZE;
+  const productsHref = `/search?${new URLSearchParams({
+    ...(q ? { q } : {}),
+    mode: "products",
+    ...(filters.agChem ? { ag: "1" } : {}),
+  })}`;
 
   return (
     <>
@@ -111,10 +124,7 @@ async function StandardResults({ q, filters, page, sp }: { q: string; filters: S
           <div className="flex items-baseline justify-between gap-4">
             <h2 className="font-medium">Products</h2>
             {products.total > PRODUCT_PREVIEW && (
-              <Link
-                href={`/search?${new URLSearchParams({ q, mode: "products" })}`}
-                className="text-muted-foreground text-sm hover:text-foreground hover:underline"
-              >
+              <Link href={productsHref} className="text-muted-foreground text-sm hover:text-foreground hover:underline">
                 See all {products.total.toLocaleString()} products →
               </Link>
             )}
@@ -134,8 +144,20 @@ async function StandardResults({ q, filters, page, sp }: { q: string; filters: S
   );
 }
 
-async function ProductResults({ q, page, sp }: { q: string; page: number; sp: Params }) {
-  if (!q) return <p className="text-muted-foreground">Enter a product name or a maker, e.g. “wood cleaner” or “Vi-Jon”.</p>;
+async function ProductResults({
+  q,
+  page,
+  sp,
+  filters,
+}: {
+  q: string;
+  page: number;
+  sp: Params;
+  filters: SearchFilters;
+}) {
+  if (!q && !filters.agChem) {
+    return <p className="text-muted-foreground">Enter a product name or a maker, e.g. “wood cleaner” or “Vi-Jon”.</p>;
+  }
   if (normalizeCas(q)) {
     return (
       <p className="text-muted-foreground">
@@ -147,7 +169,7 @@ async function ProductResults({ q, page, sp }: { q: string; page: number; sp: Pa
       </p>
     );
   }
-  const { total, results } = await searchProducts(q, PAGE_SIZE, (page - 1) * PAGE_SIZE);
+  const { total, results } = await searchProducts(q, PAGE_SIZE, (page - 1) * PAGE_SIZE, filters);
   if (results.length === 0) return <p className="text-muted-foreground">No products matched.</p>;
   return (
     <>
@@ -246,19 +268,28 @@ function ResultList({ results }: { results: SearchResult[] }) {
   );
 }
 
-function ModeTabs({ q, mode }: { q: string; mode: Mode }) {
-  const tab = (value: Mode, label: string) => (
-    <Link
-      href={`/search?${new URLSearchParams({ q, ...(value === "standard" ? {} : { mode: value }) })}`}
-      className={
-        mode === value
-          ? "bg-secondary text-foreground rounded-md px-3 py-1.5"
-          : "text-muted-foreground hover:text-foreground rounded-md px-3 py-1.5"
-      }
-    >
-      {label}
-    </Link>
-  );
+function ModeTabs({ q, mode, sp }: { q: string; mode: Mode; sp: Params }) {
+  const tab = (value: Mode, label: string) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (value !== "standard") params.set("mode", value);
+    if (first(sp.ag) === "1") params.set("ag", "1");
+    if (first(sp.list)) params.set("list", first(sp.list)!);
+    if (first(sp.maxHazard)) params.set("maxHazard", first(sp.maxHazard)!);
+    if (first(sp.active) === "1") params.set("active", "1");
+    return (
+      <Link
+        href={`/search?${params}`}
+        className={
+          mode === value
+            ? "bg-secondary text-foreground rounded-md px-3 py-1.5"
+            : "text-muted-foreground hover:text-foreground rounded-md px-3 py-1.5"
+        }
+      >
+        {label}
+      </Link>
+    );
+  };
   return (
     <div className="flex gap-1 text-sm">
       {tab("standard", "All")}
@@ -270,6 +301,7 @@ function ModeTabs({ q, mode }: { q: string; mode: Mode }) {
 
 function FilterLinks({ q, sp }: { q: string; sp: Params }) {
   const current = first(sp.list);
+  const agOn = first(sp.ag) === "1";
   const link = (patch: Record<string, string | undefined>) => {
     const next = new URLSearchParams();
     for (const [k, v] of Object.entries({ ...(sp as Record<string, string>), ...patch, page: undefined, q })) {
@@ -279,6 +311,18 @@ function FilterLinks({ q, sp }: { q: string; sp: Params }) {
   };
   return (
     <>
+      <div>
+        <h3 className="mb-2 font-medium">Industry</h3>
+        <Link
+          href={link({ ag: agOn ? undefined : "1" })}
+          className={agOn ? "text-foreground" : "text-muted-foreground"}
+        >
+          {agOn ? "✓ Ag Chem" : "Ag Chem"}
+        </Link>
+        <p className="text-muted-foreground mt-1 text-xs">
+          Agriculture &amp; pesticide ingredients, plus EPA pesticide inerts
+        </p>
+      </div>
       <div>
         <h3 className="mb-2 font-medium">Regulatory list</h3>
         <ul className="space-y-1">

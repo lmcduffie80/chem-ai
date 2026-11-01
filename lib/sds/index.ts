@@ -2,9 +2,13 @@ import type { SdsProvider } from "./provider";
 import { FixtureProvider } from "./providers/fixture";
 import { GenericRestProvider } from "./providers/generic-rest";
 
-export function getSdsProvider(): SdsProvider {
-  const kind = process.env.SDS_PROVIDER ?? "generic-rest";
+/** Unset or `none` means we only link out to the manufacturer's SDS. */
+export function getSdsProvider(): SdsProvider | null {
+  const kind = process.env.SDS_PROVIDER ?? "none";
   switch (kind) {
+    case "none":
+    case "":
+      return null;
     case "fixture":
       if (process.env.VERCEL_ENV === "production") {
         throw new Error("The fixture SDS provider cannot be used in production.");
