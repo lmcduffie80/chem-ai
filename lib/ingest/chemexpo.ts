@@ -1,17 +1,24 @@
 import { invalidateTags } from "./invalidate";
-import { get, put } from "@vercel/blob";
+import { isNewerDocument, productKey } from "./product-identity";
+import { del, get, put } from "@vercel/blob";
 import { parse as parseStream } from "csv-parse";
-import { and, eq, inArray, lt, notExists, sql } from "drizzle-orm";
+import { and, eq, exists, inArray, isNotNull, isNull, lt, notExists, or, sql } from "drizzle-orm";
 import { Unzip, UnzipInflate } from "fflate";
 import { Readable } from "node:stream";
 import { db, schema } from "@/db";
 import type { IngestStats } from "@/db/schema";
+import { midpointWeight } from "@/lib/alternates/score";
 import { normalizeCas } from "@/lib/cas";
+import { generalCategory } from "@/lib/chemical-products";
 import { CHEMEXPO_SOURCE, type SupplierKind } from "@/lib/product-sources";
 
 export const CHEMEXPO_COMPOSITION_URL = "https://comptox.epa.gov/chemexpo/dl_co_chemicals/";
-/** Most recent products kept per chemical. Full counts live in `chemical_product_categories`. */
-const PRODUCTS_PER_CHEMICAL = 25;
+/** Extraction runs once per partition (`doc % EXTRACT_PARTITIONS`) to bound memory. */
+const EXTRACT_PARTITIONS = 4;
+/** A complete EPA file has ~300k distinct products; far fewer means a truncated or wrong download. */
+const MIN_EXPECTED_PRODUCTS = 100_000;
+/** Prune refuses to remove more than this share of the ChemExpo catalog in one run. */
+const MAX_PRUNE_SHARE = 0.3;
 const PRODUCTS_PER_CHUNK = 3000;
 const INSERT_BATCH = 1000;
 
@@ -168,6 +175,10 @@ function rowCas(row: string[], col: Columns) {
   return normalizeCas(row[col.curatedCas] || row[col.rawCas]);
 }
 
+function productName(row: string[], col: Columns, doc: number) {
+  return (row[col.product] || row[col.title] || `ChemExpo document ${doc}`).trim().slice(0, 300);
+}
+
 async function chemicalIdsByCas() {
   const rows = await db.select({ id: schema.chemicals.id, casRn: schema.chemicals.casRn }).from(schema.chemicals);
   return new Map(rows.map((r) => [r.casRn, r.id]));
@@ -195,78 +206,45 @@ export async function stageChemExpo() {
   return { pathname: blob.pathname, origin: url };
 }
 
-/**
- * First pass: picks the most recent products for each known chemical and replaces the
- * per-category product counts. Returns the Blob path of the selected document IDs.
- */
-export async function planChemExpoSample(pathname: string) {
+/** First pass: keeps the newest document for each distinct product (maker + normalized name). */
+export async function planChemExpoProducts(pathname: string) {
   "use step";
-  const idByCas = await chemicalIdsByCas();
-  const docDate = new Map<number, number>();
-  const seenPairs = new Set<number>();
-  const counts = new Map<number, Map<string, number>>();
-  const top = new Map<number, { doc: number; t: number }[]>();
+  const seenDocs = new Set<number>();
+  const winners = new Map<string, { doc: number; t: number }>();
   let rows = 0;
 
   for await (const { row, col } of compositionRows(pathname)) {
     rows++;
-    const doc = Number(row[col.doc]);
-    if (!Number.isFinite(doc)) continue;
-    let t = docDate.get(doc);
-    if (t === undefined) {
-      const date = parseLooseDate(row[col.date]);
-      t = date ? Date.parse(date) : 0;
-      docDate.set(doc, t);
-    }
-    const cas = rowCas(row, col);
-    const chemicalId = cas ? idByCas.get(cas) : undefined;
-    if (!chemicalId) continue;
-    const pair = chemicalId * 2 ** 22 + doc;
-    if (seenPairs.has(pair)) continue;
-    seenPairs.add(pair);
-
-    const category = row[col.pucGeneral]?.trim() || "Uncategorized";
-    const byCategory = counts.get(chemicalId) ?? new Map<string, number>();
-    byCategory.set(category, (byCategory.get(category) ?? 0) + 1);
-    counts.set(chemicalId, byCategory);
-
-    const list = top.get(chemicalId) ?? [];
-    if (list.length < PRODUCTS_PER_CHEMICAL) {
-      list.push({ doc, t });
-    } else {
-      let minIndex = 0;
-      for (let i = 1; i < list.length; i++) if (list[i].t < list[minIndex].t) minIndex = i;
-      if (t > list[minIndex].t) list[minIndex] = { doc, t };
-    }
-    top.set(chemicalId, list);
+    const rawDoc = row[col.doc]?.trim();
+    if (!rawDoc) continue;
+    const doc = Number(rawDoc);
+    if (!Number.isFinite(doc) || seenDocs.has(doc)) continue;
+    seenDocs.add(doc);
+    const date = parseLooseDate(row[col.date]);
+    const candidate = { doc, t: date ? Date.parse(date) : 0 };
+    const key = productKey(row[col.source]?.trim() || "Unknown source", productName(row, col, doc), doc);
+    const current = winners.get(key);
+    if (!current || isNewerDocument(candidate, current)) winners.set(key, candidate);
   }
 
-  const selected = new Set<number>();
-  for (const list of top.values()) for (const { doc } of list) selected.add(doc);
-
-  const categoryRows = [...counts.entries()].flatMap(([chemicalId, byCategory]) =>
-    [...byCategory.entries()].map(([category, productCount]) => ({
-      chemicalId,
-      source: CHEMEXPO_SOURCE,
-      category,
-      productCount,
-    })),
-  );
-  await db.delete(schema.chemicalProductCategories).where(eq(schema.chemicalProductCategories.source, CHEMEXPO_SOURCE));
-  for (let i = 0; i < categoryRows.length; i += INSERT_BATCH) {
-    await db.insert(schema.chemicalProductCategories).values(categoryRows.slice(i, i + INSERT_BATCH));
+  const selected = [...winners.values()].map((w) => w.doc);
+  if (selected.length < MIN_EXPECTED_PRODUCTS) {
+    throw new Error(`ChemExpo file yielded only ${selected.length} products; refusing to replace the catalog`);
   }
-
-  const blob = await put(`ingest/chemexpo/selected-${Date.now()}.json`, JSON.stringify([...selected]), {
+  const blob = await put(`ingest/chemexpo/selected-${Date.now()}.json`, JSON.stringify(selected), {
     access: "private",
     contentType: "application/json",
     addRandomSuffix: true,
   });
   return {
     selectedPath: blob.pathname,
-    stats: { rows, products: docDate.size, chemicals: counts.size, sampled: selected.size } satisfies IngestStats,
+    partitions: EXTRACT_PARTITIONS,
+    stats: { rows, documents: seenDocs.size, products: selected.length } satisfies IngestStats,
   };
 }
+
+/** [CAS, chemical ID, raw name (only when unresolved), min %, max %, weight fraction] */
+type StagedComponent = [string | null, number | null, string | null, number | null, number | null, number | null];
 
 type StagedProduct = {
   doc: number;
@@ -274,7 +252,7 @@ type StagedProduct = {
   name: string;
   category: string | null;
   date: string | null;
-  components: { cas: string | null; name: string; min: number | null; max: number | null }[];
+  components: StagedComponent[];
 };
 
 function percent(value: string | undefined) {
@@ -283,16 +261,20 @@ function percent(value: string | undefined) {
   return Number.isFinite(n) ? Math.round(n * 100 * 10000) / 10000 : null;
 }
 
-/** Second pass: gathers metadata and full compositions for the sampled products into Blob chunks. */
-export async function extractChemExpoProducts(pathname: string, selectedPath: string) {
+/** Second pass for one partition: gathers metadata and compositions of selected products into Blob chunks. */
+export async function extractChemExpoProducts(pathname: string, selectedPath: string, partition: number, partitions: number) {
   "use step";
   const selectedBlob = await get(selectedPath, { access: "private", useCache: false });
   if (!selectedBlob || selectedBlob.statusCode !== 200) throw new Error(`Blob not found: ${selectedPath}`);
-  const selected = new Set<number>(await new Response(selectedBlob.stream).json());
+  const docs: number[] = await new Response(selectedBlob.stream).json();
+  const selected = new Set(docs.filter((doc) => doc % partitions === partition));
+  const idByCas = await chemicalIdsByCas();
 
   const products = new Map<number, StagedProduct>();
   for await (const { row, col } of compositionRows(pathname)) {
-    const doc = Number(row[col.doc]);
+    const rawDoc = row[col.doc]?.trim();
+    if (!rawDoc) continue;
+    const doc = Number(rawDoc);
     if (!selected.has(doc)) continue;
     let product = products.get(doc);
     if (!product) {
@@ -303,30 +285,34 @@ export async function extractChemExpoProducts(pathname: string, selectedPath: st
       product = {
         doc,
         source: row[col.source]?.trim() || "Unknown source",
-        name: (row[col.product] || row[col.title] || `ChemExpo document ${doc}`).trim().slice(0, 300),
+        name: productName(row, col, doc),
         category: category || null,
         date: parseLooseDate(row[col.date]),
         components: [],
       };
       products.set(doc, product);
     }
-    const lower = percent(row[col.lower]);
-    const upper = percent(row[col.upper]);
     const central = percent(row[col.central]);
+    const min = percent(row[col.lower]) ?? central;
+    const max = percent(row[col.upper]) ?? central;
     const cas = rowCas(row, col);
-    product.components.push({
-      cas,
-      name: (row[col.curatedName] || row[col.rawName] || cas || "Unnamed ingredient").trim().slice(0, 300),
-      min: lower ?? central,
-      max: upper ?? central,
-    });
+    const chemicalId = cas ? (idByCas.get(cas) ?? null) : null;
+    const name = chemicalId
+      ? null
+      : (row[col.curatedName]?.trim() || row[col.rawName]?.trim() || cas || "Unnamed ingredient").slice(0, 300);
+    product.components.push([cas, chemicalId, name, min, max, midpointWeight(min, max)]);
+  }
+
+  for (const product of products.values()) {
+    const only = product.components.length === 1 ? product.components[0] : null;
+    if (only && only[5] === null) only[5] = 1;
   }
 
   const all = [...products.values()];
   const chunkPaths: string[] = [];
   for (let i = 0; i < all.length; i += PRODUCTS_PER_CHUNK) {
     const blob = await put(
-      `ingest/chemexpo/products-${Date.now()}-${i / PRODUCTS_PER_CHUNK}.json`,
+      `ingest/chemexpo/products-${Date.now()}-p${partition}-${i / PRODUCTS_PER_CHUNK}.json`,
       JSON.stringify(all.slice(i, i + PRODUCTS_PER_CHUNK)),
       { access: "private", contentType: "application/json", addRandomSuffix: true },
     );
@@ -338,22 +324,27 @@ export async function extractChemExpoProducts(pathname: string, selectedPath: st
 export async function upsertChemExpoChunk(chunkPath: string): Promise<IngestStats> {
   "use step";
   const blob = await get(chunkPath, { access: "private", useCache: false });
-  if (!blob || blob.statusCode !== 200) throw new Error(`Blob not found: ${chunkPath}`);
+  if (!blob || blob.statusCode !== 200) {
+    console.warn(`ChemExpo chunk ${chunkPath} not found; assuming it was already written`);
+    return { processed: 0 };
+  }
   const staged: StagedProduct[] = await new Response(blob.stream).json();
   const now = new Date();
 
-  const sourceNames = [...new Set(staged.map((p) => p.source))];
+  const sourceBySlug = new Map(staged.map((p) => [slug(p.source), p.source]));
   const suppliers = await db
     .insert(schema.suppliers)
-    .values(sourceNames.map((name) => ({ source: CHEMEXPO_SOURCE, externalId: slug(name), name, kind: supplierKind(name) })))
+    .values(
+      [...sourceBySlug].map(([externalId, name]) => ({ source: CHEMEXPO_SOURCE, externalId, name, kind: supplierKind(name) })),
+    )
     .onConflictDoUpdate({
       target: [schema.suppliers.source, schema.suppliers.externalId],
       set: { name: sql`excluded.name`, kind: sql`excluded.kind`, updatedAt: now },
     })
-    .returning({ id: schema.suppliers.id, name: schema.suppliers.name });
-  const supplierId = new Map(suppliers.map((s) => [s.name, s.id]));
+    .returning({ id: schema.suppliers.id, externalId: schema.suppliers.externalId });
+  const supplierIdBySlug = new Map(suppliers.map((s) => [s.externalId, s.id]));
 
-  const productIdByDoc = new Map<string, string>();
+  const stagedByProductId = new Map<string, StagedProduct>();
   let inserted = 0;
   let updated = 0;
   for (let i = 0; i < staged.length; i += INSERT_BATCH) {
@@ -361,7 +352,7 @@ export async function upsertChemExpoChunk(chunkPath: string): Promise<IngestStat
       .insert(schema.products)
       .values(
         staged.slice(i, i + INSERT_BATCH).map((p) => ({
-          supplierId: supplierId.get(p.source)!,
+          supplierId: supplierIdBySlug.get(slug(p.source))!,
           source: CHEMEXPO_SOURCE,
           externalId: String(p.doc),
           name: p.name,
@@ -382,48 +373,74 @@ export async function upsertChemExpoChunk(chunkPath: string): Promise<IngestStat
         },
       })
       .returning({ id: schema.products.id, externalId: schema.products.externalId, inserted: sql<boolean>`(xmax = 0)` });
+    const byDoc = new Map(staged.slice(i, i + INSERT_BATCH).map((p) => [String(p.doc), p]));
     for (const r of rows) {
-      productIdByDoc.set(r.externalId, r.id);
+      stagedByProductId.set(r.id, byDoc.get(r.externalId)!);
       if (r.inserted) inserted++;
       else updated++;
     }
   }
 
-  const productIds = [...productIdByDoc.values()];
+  // Same external ID ⇒ same EPA document ⇒ same composition, so only products with missing or outdated components are rewritten.
+  const pc = schema.productComponents;
+  const productIds = [...stagedByProductId.keys()];
+  const needsComponents: string[] = [];
   for (let i = 0; i < productIds.length; i += INSERT_BATCH) {
-    await db
-      .delete(schema.productComponents)
-      .where(inArray(schema.productComponents.productId, productIds.slice(i, i + INSERT_BATCH)));
-  }
-
-  const casList = [...new Set(staged.flatMap((p) => p.components.map((c) => c.cas)).filter((c): c is string => !!c))];
-  const idByCas = new Map<string, number>();
-  for (let i = 0; i < casList.length; i += INSERT_BATCH) {
     const rows = await db
-      .select({ id: schema.chemicals.id, casRn: schema.chemicals.casRn })
-      .from(schema.chemicals)
-      .where(inArray(schema.chemicals.casRn, casList.slice(i, i + INSERT_BATCH)));
-    for (const r of rows) idByCas.set(r.casRn, r.id);
+      .select({ id: schema.products.id })
+      .from(schema.products)
+      .where(
+        and(
+          inArray(schema.products.id, productIds.slice(i, i + INSERT_BATCH)),
+          or(
+            notExists(db.select({ id: pc.id }).from(pc).where(eq(pc.productId, schema.products.id))),
+            exists(
+              db
+                .select({ id: pc.id })
+                .from(pc)
+                .where(
+                  and(
+                    eq(pc.productId, schema.products.id),
+                    or(
+                      and(isNull(pc.weight), or(isNotNull(pc.minPct), isNotNull(pc.maxPct))),
+                      and(isNotNull(pc.chemicalId), isNotNull(pc.componentName)),
+                    ),
+                  ),
+                ),
+            ),
+          ),
+        ),
+      );
+    needsComponents.push(...rows.map((r) => r.id));
   }
 
-  const components = staged.flatMap((p) =>
-    p.components.map((c) => ({
-      productId: productIdByDoc.get(String(p.doc))!,
-      chemicalId: c.cas ? (idByCas.get(c.cas) ?? null) : null,
-      casRn: c.cas,
-      componentName: c.name,
-      minPct: c.min,
-      maxPct: c.max,
-    })),
-  );
-  for (let i = 0; i < components.length; i += INSERT_BATCH) {
-    await db.insert(schema.productComponents).values(components.slice(i, i + INSERT_BATCH));
+  let components = 0;
+  for (let i = 0; i < needsComponents.length; i += INSERT_BATCH) {
+    const ids = needsComponents.slice(i, i + INSERT_BATCH);
+    const values = ids.flatMap((productId) =>
+      stagedByProductId.get(productId)!.components.map(([casRn, chemicalId, componentName, minPct, maxPct, weight]) => ({
+        productId,
+        chemicalId,
+        casRn,
+        componentName,
+        minPct,
+        maxPct,
+        weight,
+      })),
+    );
+    const inserts = [];
+    for (let j = 0; j < values.length; j += INSERT_BATCH) {
+      inserts.push(db.insert(pc).values(values.slice(j, j + INSERT_BATCH)));
+    }
+    await db.batch([db.delete(pc).where(inArray(pc.productId, ids)), ...inserts]);
+    components += values.length;
   }
+  await del(chunkPath);
 
-  return { processed: staged.length, inserted, updated, components: components.length };
+  return { processed: staged.length, inserted, updated, components };
 }
 
-/** Removes ChemExpo products that fell out of the sample in this run, plus empty ChemExpo suppliers. */
+/** Removes ChemExpo products not refreshed by this run, plus empty ChemExpo suppliers. */
 export async function pruneChemExpo(runId: string): Promise<IngestStats> {
   "use step";
   const [run] = await db
@@ -431,6 +448,19 @@ export async function pruneChemExpo(runId: string): Promise<IngestStats> {
     .from(schema.ingestRuns)
     .where(eq(schema.ingestRuns.id, runId));
   if (!run) throw new Error(`Unknown ingest run ${runId}`);
+
+  const [{ total, stale }] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      stale: sql<number>`(count(*) filter (where ${lt(schema.products.updatedAt, run.startedAt)}))::int`,
+    })
+    .from(schema.products)
+    .where(eq(schema.products.source, CHEMEXPO_SOURCE));
+  if (total > 0 && stale / total > MAX_PRUNE_SHARE) {
+    throw new Error(
+      `ChemExpo prune would remove ${stale} of ${total} products (more than ${MAX_PRUNE_SHARE * 100}% of the catalog); the source file may be incomplete`,
+    );
+  }
 
   const removed = await db
     .delete(schema.products)
@@ -445,6 +475,56 @@ export async function pruneChemExpo(runId: string): Promise<IngestStats> {
       ),
     );
 
-  invalidateTags(["chemicals", "search"]);
   return { removed: removed.length };
+}
+
+/** Rebuilds per-category product counts and ingredient frequencies from the loaded products. */
+export async function summarizeChemExpo(): Promise<IngestStats> {
+  "use step";
+  const relinked = await db.execute(sql`
+    update product_components pc set chemical_id = c.id, component_name = null
+    from chemicals c
+    where pc.chemical_id is null and pc.cas_rn is not null and c.cas_rn = pc.cas_rn
+  `);
+
+  const [, categories] = await db.batch([
+    db.delete(schema.chemicalProductCategories).where(eq(schema.chemicalProductCategories.source, CHEMEXPO_SOURCE)),
+    db.execute(sql`
+      insert into chemical_product_categories (chemical_id, source, category, product_count)
+      select pc.chemical_id, ${CHEMEXPO_SOURCE}, ${generalCategory(sql`p.category`)}, count(distinct p.id)::int
+      from product_components pc
+      join products p on p.id = pc.product_id
+      where p.source = ${CHEMEXPO_SOURCE} and pc.chemical_id is not null
+      group by pc.chemical_id, 3
+    `),
+  ]);
+
+  const [, frequencies] = await db.batch([
+    db.delete(schema.chemicalDocFreq),
+    db.execute(sql`
+      insert into chemical_doc_freq (chemical_id, product_count)
+      select chemical_id, count(distinct product_id)::int
+      from product_components
+      where chemical_id is not null
+      group by chemical_id
+    `),
+  ]);
+
+  invalidateTags(["chemicals", "search", "alternates"]);
+  return {
+    relinkedComponents: relinked.rowCount ?? 0,
+    categoryRows: categories.rowCount ?? 0,
+    ingredientFrequencies: frequencies.rowCount ?? 0,
+  };
+}
+
+/** Deletes per-run intermediates; admin-uploaded source files are kept. */
+export async function cleanupChemExpo(paths: string[]) {
+  "use step";
+  if (!paths.length) return;
+  try {
+    await del(paths);
+  } catch (error) {
+    console.warn("ChemExpo cleanup failed", paths, error);
+  }
 }

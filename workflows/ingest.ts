@@ -1,9 +1,11 @@
 import { sendRegulatoryAlerts } from "@/lib/alerts";
 import {
+  cleanupChemExpo,
   extractChemExpoProducts,
-  planChemExpoSample,
+  planChemExpoProducts,
   pruneChemExpo,
   stageChemExpo,
+  summarizeChemExpo,
   upsertChemExpoChunk,
 } from "@/lib/ingest/chemexpo";
 import { enrichFromCompTox, selectChemicalsToEnrich } from "@/lib/ingest/comptox";
@@ -149,18 +151,26 @@ export async function chemexpoWorkflow(trigger: string) {
   "use workflow";
   const runId = await startRun("chemexpo", trigger);
   let stats: IngestStats = {};
+  const temporaryPaths: string[] = [];
   try {
-    const { pathname } = await stageChemExpo();
-    const plan = await planChemExpoSample(pathname);
+    const staged = await stageChemExpo();
+    if (!staged.origin.startsWith("blob:")) temporaryPaths.push(staged.pathname);
+    const plan = await planChemExpoProducts(staged.pathname);
+    temporaryPaths.push(plan.selectedPath);
     stats = mergeStats(stats, plan.stats);
-    const chunkPaths = await extractChemExpoProducts(pathname, plan.selectedPath);
-    for (const chunkPath of chunkPaths) {
-      stats = mergeStats(stats, await upsertChemExpoChunk(chunkPath));
+    for (let partition = 0; partition < plan.partitions; partition++) {
+      const chunkPaths = await extractChemExpoProducts(staged.pathname, plan.selectedPath, partition, plan.partitions);
+      for (const chunkPath of chunkPaths) {
+        stats = mergeStats(stats, await upsertChemExpoChunk(chunkPath));
+      }
     }
     stats = mergeStats(stats, await pruneChemExpo(runId));
+    stats = mergeStats(stats, await summarizeChemExpo());
     await finishRun(runId, stats);
+    await cleanupChemExpo(temporaryPaths);
     return stats;
   } catch (error) {
+    await cleanupChemExpo(temporaryPaths);
     await failRun(runId, errorMessage(error), stats);
     throw error;
   }

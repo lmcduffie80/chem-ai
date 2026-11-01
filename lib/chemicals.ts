@@ -1,8 +1,7 @@
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ne } from "drizzle-orm";
 import { cacheLife, cacheTag } from "next/cache";
 import { db, schema } from "@/db";
 import { normalizeCas } from "@/lib/cas";
-import { CHEMEXPO_SOURCE } from "@/lib/product-sources";
 
 export async function getChemicalByCas(casInput: string) {
   "use cache";
@@ -15,7 +14,7 @@ export async function getChemicalByCas(casInput: string) {
   if (!chemical) return null;
   const { embedding: _embedding, searchVector: _searchVector, ...rest } = chemical;
 
-  const [synonyms, hazards, listings, components, productCategories] = await Promise.all([
+  const [synonyms, hazards, listings, productCategories] = await Promise.all([
     db
       .select({ name: schema.synonyms.name, source: schema.synonyms.source })
       .from(schema.synonyms)
@@ -30,35 +29,6 @@ export async function getChemicalByCas(casInput: string) {
       .orderBy(asc(schema.regulatoryListings.listCode)),
     db
       .select({
-        productId: schema.products.id,
-        productName: schema.products.name,
-        sku: schema.products.sku,
-        grade: schema.products.grade,
-        purity: schema.products.purity,
-        category: schema.products.category,
-        documentDate: schema.products.documentDate,
-        source: schema.products.source,
-        sourceUrl: schema.products.sourceUrl,
-        supplierId: schema.suppliers.id,
-        supplierName: schema.suppliers.name,
-        supplierKind: schema.suppliers.kind,
-        supplierCountry: schema.suppliers.country,
-        minPct: schema.productComponents.minPct,
-        maxPct: schema.productComponents.maxPct,
-      })
-      .from(schema.productComponents)
-      .innerJoin(schema.products, eq(schema.products.id, schema.productComponents.productId))
-      .innerJoin(schema.suppliers, eq(schema.suppliers.id, schema.products.supplierId))
-      .where(eq(schema.productComponents.chemicalId, chemical.id))
-      // Licensed-feed products (which carry SDS documents) first, then the newest public records.
-      .orderBy(
-        sql`(${schema.products.source} = ${CHEMEXPO_SOURCE}) asc`,
-        sql`${schema.products.documentDate} desc nulls last`,
-        asc(schema.products.name),
-      )
-      .limit(100),
-    db
-      .select({
         source: schema.chemicalProductCategories.source,
         category: schema.chemicalProductCategories.category,
         productCount: schema.chemicalProductCategories.productCount,
@@ -68,35 +38,12 @@ export async function getChemicalByCas(casInput: string) {
       .orderBy(desc(schema.chemicalProductCategories.productCount)),
   ]);
 
-  // The same product can list an ingredient more than once (e.g. under two names).
-  const seenProducts = new Set<string>();
-  const products = components.filter((c) => !seenProducts.has(c.productId) && seenProducts.add(c.productId));
-
-  const productIds = products.map((c) => c.productId);
-  const sdsDocuments = productIds.length
-    ? await db
-        .select({
-          id: schema.sdsDocuments.id,
-          productId: schema.sdsDocuments.productId,
-          revisionDate: schema.sdsDocuments.revisionDate,
-          language: schema.sdsDocuments.language,
-          region: schema.sdsDocuments.region,
-          hasPdf: schema.sdsDocuments.blobPathname,
-        })
-        .from(schema.sdsDocuments)
-        .where(inArray(schema.sdsDocuments.productId, productIds))
-        .orderBy(desc(schema.sdsDocuments.revisionDate))
-    : [];
-
   return {
     ...rest,
     synonyms: synonyms.filter((s) => s.name.toLowerCase() !== chemical.preferredName.toLowerCase()),
     hazards,
     listings,
-    products,
     productCategories,
-    totalProductCount: productCategories.reduce((sum, c) => sum + c.productCount, 0),
-    sdsDocuments: sdsDocuments.map((d) => ({ ...d, hasPdf: Boolean(d.hasPdf) })),
   };
 }
 

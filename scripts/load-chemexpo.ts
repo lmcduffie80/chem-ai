@@ -6,10 +6,12 @@
 import { put } from "@vercel/blob";
 import { readFile } from "node:fs/promises";
 import {
+  cleanupChemExpo,
   extractChemExpoProducts,
-  planChemExpoSample,
+  planChemExpoProducts,
   pruneChemExpo,
   stageChemExpo,
+  summarizeChemExpo,
   upsertChemExpoChunk,
 } from "../lib/ingest/chemexpo";
 import { failRun, finishRun, startRun } from "../lib/ingest/runs";
@@ -17,35 +19,46 @@ import { errorMessage, mergeStats } from "../lib/ingest/stats";
 import type { IngestStats } from "../db/schema";
 
 async function stage(localFile: string | undefined) {
-  if (!localFile) return (await stageChemExpo()).pathname;
+  if (!localFile) {
+    const staged = await stageChemExpo();
+    return { pathname: staged.pathname, temporary: !staged.origin.startsWith("blob:") };
+  }
   const blob = await put(`ingest/chemexpo/local-${Date.now()}.zip`, await readFile(localFile), {
     access: "private",
     addRandomSuffix: true,
     multipart: true,
   });
-  return blob.pathname;
+  return { pathname: blob.pathname, temporary: true };
 }
 
 async function main() {
   const runId = await startRun("chemexpo", "script");
   let stats: IngestStats = {};
+  const temporaryPaths: string[] = [];
   try {
-    const pathname = await stage(process.argv[2]);
+    const { pathname, temporary } = await stage(process.argv[2]);
+    if (temporary) temporaryPaths.push(pathname);
     console.log("staged", pathname);
-    const plan = await planChemExpoSample(pathname);
+    const plan = await planChemExpoProducts(pathname);
+    temporaryPaths.push(plan.selectedPath);
     stats = mergeStats(stats, plan.stats);
     console.log("plan", plan.stats);
-    const chunks = await extractChemExpoProducts(pathname, plan.selectedPath);
-    console.log("chunks", chunks.length);
-    for (const [i, chunk] of chunks.entries()) {
-      const result = await upsertChemExpoChunk(chunk);
-      stats = mergeStats(stats, result);
-      console.log(`chunk ${i + 1}/${chunks.length}`, result);
+    for (let partition = 0; partition < plan.partitions; partition++) {
+      const chunks = await extractChemExpoProducts(pathname, plan.selectedPath, partition, plan.partitions);
+      console.log(`partition ${partition + 1}/${plan.partitions}: ${chunks.length} chunks`);
+      for (const [i, chunk] of chunks.entries()) {
+        const result = await upsertChemExpoChunk(chunk);
+        stats = mergeStats(stats, result);
+        console.log(`  chunk ${i + 1}/${chunks.length}`, result);
+      }
     }
     stats = mergeStats(stats, await pruneChemExpo(runId));
+    stats = mergeStats(stats, await summarizeChemExpo());
     await finishRun(runId, stats);
+    await cleanupChemExpo(temporaryPaths);
     console.log("done", stats);
   } catch (error) {
+    await cleanupChemExpo(temporaryPaths);
     await failRun(runId, errorMessage(error), stats);
     throw error;
   }
