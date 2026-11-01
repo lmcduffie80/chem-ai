@@ -104,10 +104,12 @@ export async function getProduct(id: string) {
   const [components, sdsDocuments] = await Promise.all([
     db
       .select({
+        chemicalId: schema.productComponents.chemicalId,
         componentName: schema.productComponents.componentName,
         casRn: schema.productComponents.casRn,
         minPct: schema.productComponents.minPct,
         maxPct: schema.productComponents.maxPct,
+        weight: schema.productComponents.weight,
         chemicalName: schema.chemicals.preferredName,
         hazardScore: schema.chemicals.hazardScore,
       })
