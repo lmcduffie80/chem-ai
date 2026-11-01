@@ -195,7 +195,7 @@ export async function stageChemExpo() {
   if (upload) return { pathname: upload.pathname, origin: `blob:${upload.pathname}` };
 
   const url = process.env.CHEMEXPO_COMPOSITION_URL || CHEMEXPO_COMPOSITION_URL;
-  const res = await fetch(url, { headers: { "user-agent": "Chemspace-Ingest/1.0" } });
+  const res = await fetch(url, { headers: { "user-agent": "Allochemix-Ingest/1.0" } });
   if (!res.ok || !res.body) throw new Error(`Failed to download ${url}: ${res.status} ${res.statusText}`);
   const blob = await put(`ingest/chemexpo/${Date.now()}.zip`, res.body, {
     access: "private",

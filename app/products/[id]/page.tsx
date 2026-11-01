@@ -113,7 +113,7 @@ async function ProductContent({ params }: Pick<PageProps<"/products/[id]">, "par
         <CardContent>
           {product.sdsDocuments.length === 0 ? (
             <p className="text-muted-foreground text-sm">
-              Chemspace doesn&apos;t hold a copy of this SDS.{" "}
+              Allochemix doesn&apos;t hold a copy of this SDS.{" "}
               <a
                 href={manufacturerSdsSearchUrl(product.name, product.supplier.name, product.supplier.kind)}
                 target="_blank"

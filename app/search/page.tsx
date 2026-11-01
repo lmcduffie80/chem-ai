@@ -7,12 +7,25 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { UpgradePrompt } from "@/components/upgrade-prompt";
 import { getViewer } from "@/lib/auth";
 import { can } from "@/lib/entitlements";
+import { normalizeCas } from "@/lib/cas";
+import { supplierRoleLabel } from "@/lib/product-sources";
 import { REGULATORY_LIST_CODES, REGULATORY_LISTS, type RegulatoryListCode } from "@/lib/reglists-meta";
-import { type SearchFilters, type SearchResult, searchChemicals } from "@/lib/search";
+import {
+  type ProductSearchResult,
+  type SearchFilters,
+  type SearchResult,
+  searchChemicals,
+  searchProducts,
+} from "@/lib/search";
 
 export const metadata: Metadata = { title: "Search" };
 
+type Mode = "standard" | "products" | "ai";
+
 const PAGE_SIZE = 25;
+const PRODUCT_PREVIEW = 5;
+/** Keeps offsets small for hostile `page` values. */
+const MAX_PAGE = 1000;
 
 type Params = Awaited<PageProps<"/search">["searchParams"]>;
 
@@ -43,15 +56,18 @@ export default function SearchPage({ searchParams }: PageProps<"/search">) {
 async function SearchContent({ searchParams }: Pick<PageProps<"/search">, "searchParams">) {
   const sp = await searchParams;
   const q = first(sp.q) ?? "";
-  const mode = first(sp.mode) === "ai" ? "ai" : "standard";
-  const page = Math.max(1, Number(first(sp.page) ?? 1) || 1);
+  const modeParam = first(sp.mode);
+  const mode: Mode = modeParam === "ai" || modeParam === "products" ? modeParam : "standard";
+  const page = Math.min(Math.max(1, Number(first(sp.page) ?? 1) || 1), MAX_PAGE);
   const filters = parseFilters(sp);
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[220px_1fr]">
-      <aside className="space-y-6 text-sm">
-        <FilterLinks q={q} sp={sp} />
-      </aside>
+    <div className={mode === "products" ? "space-y-6" : "grid gap-8 lg:grid-cols-[220px_1fr]"}>
+      {mode !== "products" && (
+        <aside className="space-y-6 text-sm">
+          <FilterLinks q={q} sp={sp} />
+        </aside>
+      )}
       <div className="space-y-6">
         <SearchBox defaultValue={q} />
         <ModeTabs q={q} mode={mode} />
@@ -59,6 +75,8 @@ async function SearchContent({ searchParams }: Pick<PageProps<"/search">, "searc
           <Suspense fallback={<ResultsSkeleton />}>
             <AiResults q={q} filters={filters} />
           </Suspense>
+        ) : mode === "products" ? (
+          <ProductResults q={q} page={page} sp={sp} />
         ) : (
           <StandardResults q={q} filters={filters} page={page} sp={sp} />
         )}
@@ -67,22 +85,104 @@ async function SearchContent({ searchParams }: Pick<PageProps<"/search">, "searc
   );
 }
 
+function pageHref(sp: Params, page: number) {
+  return `/search?${new URLSearchParams({ ...(sp as Record<string, string>), page: String(page) })}`;
+}
+
 async function StandardResults({ q, filters, page, sp }: { q: string; filters: SearchFilters; page: number; sp: Params }) {
   if (!q && !filters.lists?.length) {
-    return <p className="text-muted-foreground">Enter a CAS number (e.g. 67-64-1), a chemical name, or a synonym.</p>;
+    return (
+      <p className="text-muted-foreground">
+        Enter a product name, a maker, a CAS number (e.g. 67-64-1), a chemical name, or a synonym.
+      </p>
+    );
   }
-  const results = await searchChemicals(q, filters, PAGE_SIZE + 1, (page - 1) * PAGE_SIZE);
+  const [results, products] = await Promise.all([
+    searchChemicals(q, filters, PAGE_SIZE + 1, (page - 1) * PAGE_SIZE),
+    page === 1 ? searchProducts(q, PRODUCT_PREVIEW) : null,
+  ]);
   const hasMore = results.length > PAGE_SIZE;
-  const href = (p: number) => `/search?${new URLSearchParams({ ...(sp as Record<string, string>), page: String(p) })}`;
 
   return (
     <>
-      <ResultList results={results.slice(0, PAGE_SIZE)} />
+      {products && products.total > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-baseline justify-between gap-4">
+            <h2 className="font-medium">Products</h2>
+            {products.total > PRODUCT_PREVIEW && (
+              <Link
+                href={`/search?${new URLSearchParams({ q, mode: "products" })}`}
+                className="text-muted-foreground text-sm hover:text-foreground hover:underline"
+              >
+                See all {products.total.toLocaleString()} products →
+              </Link>
+            )}
+          </div>
+          <ProductList results={products.results} />
+        </section>
+      )}
+      <section className="space-y-3">
+        {products && products.total > 0 && <h2 className="font-medium">Chemicals</h2>}
+        <ResultList results={results.slice(0, PAGE_SIZE)} />
+        <div className="flex justify-between text-sm">
+          {page > 1 ? <Link href={pageHref(sp, page - 1)}>← Previous</Link> : <span />}
+          {hasMore && <Link href={pageHref(sp, page + 1)}>Next →</Link>}
+        </div>
+      </section>
+    </>
+  );
+}
+
+async function ProductResults({ q, page, sp }: { q: string; page: number; sp: Params }) {
+  if (!q) return <p className="text-muted-foreground">Enter a product name or a maker, e.g. “wood cleaner” or “Vi-Jon”.</p>;
+  if (normalizeCas(q)) {
+    return (
+      <p className="text-muted-foreground">
+        For a CAS number, open the{" "}
+        <Link href={`/chemicals/${normalizeCas(q)}#products`} className="text-foreground hover:underline">
+          chemical page
+        </Link>{" "}
+        to see every product that contains it.
+      </p>
+    );
+  }
+  const { total, results } = await searchProducts(q, PAGE_SIZE, (page - 1) * PAGE_SIZE);
+  if (results.length === 0) return <p className="text-muted-foreground">No products matched.</p>;
+  return (
+    <>
+      <p className="text-muted-foreground text-sm">
+        {total.toLocaleString()} products. Open one to see its alternates.
+      </p>
+      <ProductList results={results} />
       <div className="flex justify-between text-sm">
-        {page > 1 ? <Link href={href(page - 1)}>← Previous</Link> : <span />}
-        {hasMore && <Link href={href(page + 1)}>Next →</Link>}
+        {page > 1 ? <Link href={pageHref(sp, page - 1)}>← Previous</Link> : <span />}
+        {page * PAGE_SIZE < total && <Link href={pageHref(sp, page + 1)}>Next →</Link>}
       </div>
     </>
+  );
+}
+
+function ProductList({ results }: { results: ProductSearchResult[] }) {
+  return (
+    <ul className="divide-border/60 divide-y rounded-lg border">
+      {results.map((p) => (
+        <li key={p.id}>
+          <Link href={`/products/${p.id}`} className="hover:bg-muted/40 flex flex-col gap-1 p-4 transition-colors">
+            <span className="font-medium">{p.name}</span>
+            <span className="text-muted-foreground text-sm">
+              {[
+                `${supplierRoleLabel(p.makerKind)} ${p.maker}`,
+                p.category,
+                p.documentDate?.slice(0, 4),
+                p.sdsId ? "SDS on file" : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -136,10 +236,10 @@ function ResultList({ results }: { results: SearchResult[] }) {
   );
 }
 
-function ModeTabs({ q, mode }: { q: string; mode: "standard" | "ai" }) {
-  const tab = (value: "standard" | "ai", label: string) => (
+function ModeTabs({ q, mode }: { q: string; mode: Mode }) {
+  const tab = (value: Mode, label: string) => (
     <Link
-      href={`/search?${new URLSearchParams({ q, ...(value === "ai" ? { mode: "ai" } : {}) })}`}
+      href={`/search?${new URLSearchParams({ q, ...(value === "standard" ? {} : { mode: value }) })}`}
       className={
         mode === value
           ? "bg-secondary text-foreground rounded-md px-3 py-1.5"
@@ -151,7 +251,8 @@ function ModeTabs({ q, mode }: { q: string; mode: "standard" | "ai" }) {
   );
   return (
     <div className="flex gap-1 text-sm">
-      {tab("standard", "CAS / name / synonym")}
+      {tab("standard", "All")}
+      {tab("products", "Products")}
       {tab("ai", "Natural language (Pro)")}
     </div>
   );

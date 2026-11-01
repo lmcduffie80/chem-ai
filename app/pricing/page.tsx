@@ -9,13 +9,13 @@ import { PLANS } from "@/lib/entitlements";
 
 export const metadata: Metadata = {
   title: "Pricing",
-  description: "Chemspace plans for individuals, procurement and EHS teams, and enterprise data programs.",
+  description: "Allochemix plans for individuals, procurement and EHS teams, and enterprise data programs.",
 };
 
 const ORDER: PlanTier[] = ["free", "pro", "team", "enterprise"];
 
 export default function PricingPage() {
-  const salesEmail = process.env.NEXT_PUBLIC_SALES_EMAIL ?? "sales@chemspace.app";
+  const salesEmail = process.env.NEXT_PUBLIC_SALES_EMAIL ?? "sales@allochemix.com";
   const enterpriseSelfServe = Boolean(process.env.STRIPE_PRICE_ENTERPRISE);
 
   return (
@@ -55,7 +55,7 @@ export default function PricingPage() {
                   </Button>
                 ) : tier === "enterprise" && !enterpriseSelfServe ? (
                   <Button asChild variant="outline" className="w-full">
-                    <a href={`mailto:${salesEmail}?subject=Chemspace%20Enterprise`}>Contact sales</a>
+                    <a href={`mailto:${salesEmail}?subject=Allochemix%20Enterprise`}>Contact sales</a>
                   </Button>
                 ) : (
                   <form action={startCheckout} className="w-full">

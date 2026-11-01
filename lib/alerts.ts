@@ -48,16 +48,16 @@ export async function sendRegulatoryAlerts(): Promise<IngestStats> {
   if (byEmail.size > 0) {
     if (!process.env.RESEND_API_KEY) throw new Error("RESEND_API_KEY is not set; cannot send regulatory alerts.");
     const resend = new Resend(process.env.RESEND_API_KEY);
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://chemspace.app";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://allochemix.com";
     for (const [email, changes] of byEmail) {
       const lines = changes.map(
         (c) =>
           `<li><a href="${appUrl}/chemicals/${c.cas_rn}">${escapeHtml(c.preferred_name)} (${c.cas_rn})</a> was <strong>${c.change_type}</strong> ${c.change_type === "added" ? "to" : "on"} ${REGULATORY_LISTS[c.list_code].label}</li>`,
       );
       const { error } = await resend.emails.send({
-        from: process.env.ALERTS_FROM_EMAIL ?? "Chemspace Alerts <alerts@chemspace.app>",
+        from: process.env.ALERTS_FROM_EMAIL ?? "Allochemix Alerts <alerts@allochemix.com>",
         to: email,
-        subject: `Chemspace: ${changes.length} regulatory change${changes.length === 1 ? "" : "s"} on your watchlist`,
+        subject: `Allochemix: ${changes.length} regulatory change${changes.length === 1 ? "" : "s"} on your watchlist`,
         html: `<p>The following chemicals on your watchlist changed regulatory status:</p><ul>${lines.join("")}</ul><p><a href="${appUrl}/workspace/alerts">View all alerts</a></p>`,
       });
       if (error) throw new Error(`Resend failed for ${email}: ${error.message}`);

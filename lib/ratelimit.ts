@@ -15,7 +15,7 @@ function limiter(name: string, requests: number, window: `${number} ${"s" | "m" 
   const key = `${name}:${requests}:${window}`;
   let rl = limiters.get(key);
   if (!rl && redis) {
-    rl = new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(requests, window), prefix: `chemspace:${name}`, analytics: true });
+    rl = new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(requests, window), prefix: `allochemix:${name}`, analytics: true });
     limiters.set(key, rl);
   }
   return rl;

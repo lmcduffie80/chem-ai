@@ -5,7 +5,7 @@ import { PLANS } from "@/lib/entitlements";
 
 export const metadata: Metadata = {
   title: "API documentation",
-  description: "Chemspace REST API: chemicals, search, safer alternatives and SDS data.",
+  description: "Allochemix REST API: chemicals, search, safer alternatives and SDS data.",
 };
 
 const ENDPOINTS = [
@@ -26,7 +26,7 @@ export default function ApiDocsPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-8 px-4 py-10">
       <div className="space-y-2">
-        <h1 className="text-3xl font-semibold">Chemspace API</h1>
+        <h1 className="text-3xl font-semibold">Allochemix API</h1>
         <p className="text-muted-foreground">
           JSON over HTTPS for every substance on the EPA TSCA inventory. Available on the Enterprise plan. The full
           OpenAPI 3.1 specification is at{" "}
@@ -49,7 +49,7 @@ export default function ApiDocsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Code>{`curl https://chemspace.app/api/v1/chemicals/67-64-1 \\
+          <Code>{`curl https://allochemix.com/api/v1/chemicals/67-64-1 \\
   -H "Authorization: Bearer cs_xxxxxxxx_..."`}</Code>
         </CardContent>
       </Card>
@@ -87,7 +87,7 @@ export default function ApiDocsPage() {
     "hazardScore": 12,
     "hazards": [{ "source": "pubchem_ghs", "signalWord": "Danger", "hStatements": ["H225", "H319", "H336"] }],
     "regulatoryLists": [{ "code": "CERCLA", "details": { "rq": "5000" } }],
-    "url": "https://chemspace.app/chemicals/67-64-1"
+    "url": "https://allochemix.com/chemicals/67-64-1"
   }
 }`}</Code>
         </CardContent>

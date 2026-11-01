@@ -19,7 +19,7 @@ export async function loadSourceBytes(key: string, url: string | undefined): Pro
   }
   if (!url) return null;
 
-  const res = await fetch(url, { headers: { "user-agent": "Chemspace-Ingest/1.0" } });
+  const res = await fetch(url, { headers: { "user-agent": "Allochemix-Ingest/1.0" } });
   if (!res.ok) throw new Error(`Failed to download ${url}: ${res.status} ${res.statusText}`);
   return { bytes: new Uint8Array(await res.arrayBuffer()), origin: url };
 }

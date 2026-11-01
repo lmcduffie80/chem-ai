@@ -24,7 +24,7 @@ export function openApiDocument(serverUrl: string) {
   return {
     openapi: "3.1.0",
     info: {
-      title: "Chemspace API",
+      title: "Allochemix API",
       version: "1.0.0",
       description:
         "Chemical reference data for every substance on the EPA TSCA inventory: identity, GHS hazards, regulatory lists, suppliers, SDS documents and safer alternatives. Requests are limited per API key per minute and per organization per month according to your plan.",

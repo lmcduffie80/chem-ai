@@ -49,9 +49,8 @@ export default function HomePage() {
       <section className="mx-auto flex max-w-3xl flex-col items-center gap-6 py-20 text-center">
         <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">Find alternate chemical products by what&apos;s in them</h1>
         <p className="text-muted-foreground text-lg">
-          Look up any CAS number registered with the EPA. See the products that contain it, alternate products with the
-          same ingredients, who makes them, their SDS, hazards and regulatory listings — for procurement, EHS and product
-          teams.
+          Look up any product or CAS number registered with the EPA. See alternate products with the same ingredients, who
+          makes them, their SDS, hazards and regulatory listings — for procurement, EHS and product teams.
         </p>
         <div className="w-full max-w-2xl">
           <SearchBox />

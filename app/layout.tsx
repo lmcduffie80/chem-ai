@@ -12,7 +12,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
-  title: { default: "Chemspace — Chemical reference database", template: "%s · Chemspace" },
+  title: { default: "Allochemix — Find alternate chemical products", template: "%s · Allochemix" },
   description:
     "Find alternate chemical products by ingredient, with makers, SDS links, hazards and regulatory listings for every CAS number on EPA's TSCA inventory.",
 };
