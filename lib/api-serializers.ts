@@ -1,5 +1,7 @@
+import type { Alternate } from "@/lib/alternates/query";
 import type { ChemicalProduct } from "@/lib/chemical-products";
 import type { ChemicalDetail } from "@/lib/chemicals";
+import { manufacturerSdsSearchUrl } from "@/lib/product-sources";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://chemspace.app";
 
@@ -44,5 +46,22 @@ export function serializeChemicalProduct(p: ChemicalProduct) {
     share: p.weight,
     sdsId: p.sdsId,
     url: `${APP_URL}/products/${p.id}`,
+  };
+}
+
+export function serializeAlternate(a: Alternate) {
+  return {
+    id: a.id,
+    name: a.name,
+    category: a.category,
+    maker: { id: a.makerId, name: a.maker, kind: a.makerKind },
+    score: Math.round(a.score * 1000) / 1000,
+    sharedCas: a.shared.map((s) => s.casRn),
+    sharedCount: a.sharedCount,
+    addedCount: a.addedCount,
+    sds: a.sdsId
+      ? { id: a.sdsId, url: `${APP_URL}/sds/${a.sdsId}` }
+      : { searchUrl: manufacturerSdsSearchUrl(a.name, a.maker, a.makerKind) },
+    url: `${APP_URL}/products/${a.id}`,
   };
 }

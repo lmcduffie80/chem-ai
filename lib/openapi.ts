@@ -133,6 +133,28 @@ export function openApiDocument(serverUrl: string) {
           responses: { "200": { description: "Alternatives" }, ...errors },
         },
       },
+      "/chemicals/{cas}/products": {
+        get: {
+          summary: "Products containing a chemical",
+          description:
+            "Every catalog product that lists this CAS number: highest reported share first (single-ingredient products count as 100%), then newest. 50 per page.",
+          parameters: [
+            casParam,
+            { name: "category", in: "query", required: false, schema: { type: "string" }, description: 'General product category, e.g. "Personal care"' },
+            { name: "page", in: "query", required: false, schema: { type: "integer", minimum: 1, default: 1 } },
+          ],
+          responses: { "200": { description: "Products" }, ...errors },
+        },
+      },
+      "/products/{id}/alternates": {
+        get: {
+          summary: "Alternate products",
+          description:
+            "Other products sharing this product's ingredient CAS numbers, ranked by weighted composition similarity (0–1). Close matches score 0.5 or more. `reason` is `no_tsca_ingredients` when nothing can be matched.",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          responses: { "200": { description: "Alternates" }, ...errors },
+        },
+      },
       "/sds/{id}": {
         get: {
           summary: "Parsed SDS document",
