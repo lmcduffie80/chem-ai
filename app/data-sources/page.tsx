@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 
 export const metadata: Metadata = {
   title: "Data sources & attribution",
-  description: "Where Chemspace data comes from, how often it refreshes, and how it may be used.",
+  description: "Where Allochemix data comes from, how often it refreshes, and how it may be used.",
 };
 
 const SOURCES = [
@@ -46,7 +46,7 @@ const SOURCES = [
     name: "EPA ChemExpo — Chemicals and Products Database (CPDat)",
     url: "https://comptox.epa.gov/chemexpo/",
     refresh: "Weekly",
-    use: "Consumer and commercial product formulations: product names, manufacturers, product categories and reported ingredient weight fractions, plus EPA pesticide inert-ingredient lists. Chemspace keeps every product, merging repeat filings into the newest, and uses the compositions to suggest alternate products.",
+    use: "Consumer and commercial product formulations: product names, manufacturers, product categories and reported ingredient weight fractions, plus EPA pesticide inert-ingredient lists. Allochemix keeps every product, merging repeat filings into the newest, and uses the compositions to suggest alternate products.",
     terms:
       "U.S. Government work; public domain. EPA compiled CPDat from manufacturer SDS and ingredient disclosures, retailer data and third-party databases (e.g. EWG, SIRI). Compositions may be out of date; consult the manufacturer's current SDS.",
   },
@@ -55,7 +55,7 @@ const SOURCES = [
     url: "https://pubchem.ncbi.nlm.nih.gov/docs/vendors",
     refresh: "Weekly, on demand",
     use: "\"Where to buy\" links to supplier catalog pages, where each supplier publishes its own SDS.",
-    terms: "Listings are deposited by the vendors themselves. Chemspace links to vendor pages and does not copy their SDS.",
+    terms: "Listings are deposited by the vendors themselves. Allochemix links to vendor pages and does not copy their SDS.",
   },
   {
     name: "Licensed SDS & supplier feed",
@@ -73,7 +73,7 @@ export default function DataSourcesPage() {
       <div className="space-y-2">
         <h1 className="text-3xl font-semibold">Data sources & attribution</h1>
         <p className="text-muted-foreground">
-          Chemspace combines public regulatory and product data with links to manufacturers&apos; own SDS. Below is
+          Allochemix combines public regulatory and product data with links to manufacturers&apos; own SDS. Below is
           every source, how we use it, and how often it refreshes.
         </p>
       </div>
@@ -105,8 +105,8 @@ export default function DataSourcesPage() {
         <h2 className="text-foreground text-lg font-medium">CAS Registry Numbers®</h2>
         <p>
           CAS Registry Number® is a registered trademark of the American Chemical Society. CAS numbers shown in
-          Chemspace are those published by the U.S. EPA in the public TSCA Inventory and related government datasets.
-          Chemspace is not affiliated with or endorsed by CAS, a division of the American Chemical Society.
+          Allochemix are those published by the U.S. EPA in the public TSCA Inventory and related government datasets.
+          Allochemix is not affiliated with or endorsed by CAS, a division of the American Chemical Society.
         </p>
         <h2 className="text-foreground text-lg font-medium">AI-generated content</h2>
         <p>

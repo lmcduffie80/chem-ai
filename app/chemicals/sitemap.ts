@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next";
 import { cacheLife } from "next/cache";
 import { db, schema } from "@/db";
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://chemspace.app";
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://allochemix.com";
 const PER_SITEMAP = 50_000;
 
 export async function generateSitemaps() {

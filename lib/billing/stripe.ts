@@ -58,7 +58,7 @@ export async function syncSubscription(sub: Stripe.Subscription) {
   const ownerType = sub.metadata.ownerType as BillingOwner["ownerType"] | undefined;
   const ownerId = sub.metadata.ownerId;
   if ((ownerType !== "user" && ownerType !== "org") || !ownerId) {
-    console.warn(`Stripe subscription ${sub.id} has no Chemspace owner metadata; ignoring`);
+    console.warn(`Stripe subscription ${sub.id} has no Allochemix owner metadata; ignoring`);
     return;
   }
 

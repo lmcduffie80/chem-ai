@@ -1,4 +1,4 @@
-# Chemspace
+# Allochemix
 
 Chemical reference platform: every CAS number on EPA's TSCA Inventory, enriched with EPA CompTox and PubChem hazard data, regulatory list membership, SDS documents and supplier products from a licensed feed, and AI-ranked safer alternatives. Multi-tenant (Clerk Organizations) with Stripe subscriptions, a public REST API and an admin console.
 
@@ -6,7 +6,7 @@ Chemical reference platform: every CAS number on EPA's TSCA Inventory, enriched 
 
 These are business/legal confirmations, not code. Do not open the product to paying customers until each is settled in writing.
 
-1. **CAS Registry Numbers (American Chemical Society).** CAS RNs and CAS index names are ACS property. Chemspace only displays CAS numbers that EPA publishes in the public TSCA Inventory, and the site carries the trademark/non-affiliation notice on `/data-sources`. However, selling access to a CAS-keyed database and offering bulk export (`/api/workspace/export`, the Enterprise API) may require a license. Contact CAS (cas.org, "CAS Registry licensing / data licensing") describing: the number of records (~86k TSCA substances), that all CAS RNs come from EPA public data, the paid tiers, API access and CSV export. Get either a license or a written determination that none is needed.
+1. **CAS Registry Numbers (American Chemical Society).** CAS RNs and CAS index names are ACS property. Allochemix only displays CAS numbers that EPA publishes in the public TSCA Inventory, and the site carries the trademark/non-affiliation notice on `/data-sources`. However, selling access to a CAS-keyed database and offering bulk export (`/api/workspace/export`, the Enterprise API) may require a license. Contact CAS (cas.org, "CAS Registry licensing / data licensing") describing: the number of records (~86k TSCA substances), that all CAS RNs come from EPA public data, the paid tiers, API access and CSV export. Get either a license or a written determination that none is needed.
 2. **SDS/supplier vendor contract (3E/Verisk, UL WERCS, Chemwatch, Sphera, …).** The contract must explicitly allow:
    - redistribution of SDS PDFs and parsed SDS content to *multiple unrelated customer organizations* (multi-tenant SaaS), not only internal use;
    - storing copies in our own storage (Vercel Blob) and serving them via our API;

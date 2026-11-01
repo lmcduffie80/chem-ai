@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-export const metadata: Metadata = { title: { template: "%s · Admin · Chemspace", default: "Admin" }, robots: { index: false } };
+export const metadata: Metadata = { title: { template: "%s · Admin · Allochemix", default: "Admin" }, robots: { index: false } };
 
 const NAV = [
   { href: "/admin", label: "Overview" },

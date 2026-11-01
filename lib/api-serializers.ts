@@ -3,7 +3,7 @@ import type { ChemicalProduct } from "@/lib/chemical-products";
 import type { ChemicalDetail } from "@/lib/chemicals";
 import { manufacturerSdsSearchUrl } from "@/lib/product-sources";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://chemspace.app";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://allochemix.com";
 
 export function serializeChemical(
   c: ChemicalDetail,

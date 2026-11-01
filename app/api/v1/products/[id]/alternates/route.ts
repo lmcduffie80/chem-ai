@@ -3,7 +3,7 @@ import { getProductAlternates } from "@/lib/alternates/query";
 import { serializeAlternate } from "@/lib/api-serializers";
 import { getProduct } from "@/lib/chemicals";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://chemspace.app";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://allochemix.com";
 
 export const GET = withApiKey<RouteContext<"/api/v1/products/[id]/alternates">>(async (_request, _api, { params }) => {
   const { id } = await params;

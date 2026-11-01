@@ -40,7 +40,7 @@ export async function ProductsSection({ chemicalId, casRn, categories, searchPar
         <CardTitle>Products containing this chemical</CardTitle>
         <CardDescription>
           {total === 0
-            ? "No products in the Chemspace catalog list this ingredient yet."
+            ? "No products in the Allochemix catalog list this ingredient yet."
             : `${total.toLocaleString()} products${category ? ` in ${category}` : ""}, highest share first. Open a product to see its alternates.`}
         </CardDescription>
       </CardHeader>
