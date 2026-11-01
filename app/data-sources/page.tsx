@@ -46,7 +46,7 @@ const SOURCES = [
     name: "EPA ChemExpo — Chemicals and Products Database (CPDat)",
     url: "https://comptox.epa.gov/chemexpo/",
     refresh: "Weekly",
-    use: "Consumer and commercial product formulations: product names, manufacturers, product categories and reported ingredient weight fractions, plus EPA pesticide inert-ingredient lists. Chemspace stores the most recent products per chemical and counts all of them by category.",
+    use: "Consumer and commercial product formulations: product names, manufacturers, product categories and reported ingredient weight fractions, plus EPA pesticide inert-ingredient lists. Chemspace keeps every product, merging repeat filings into the newest, and uses the compositions to suggest alternate products.",
     terms:
       "U.S. Government work; public domain. EPA compiled CPDat from manufacturer SDS and ingredient disclosures, retailer data and third-party databases (e.g. EWG, SIRI). Compositions may be out of date; consult the manufacturer's current SDS.",
   },
