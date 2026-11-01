@@ -26,8 +26,18 @@ export async function AlternatesSection({ productId }: { productId: string }) {
           <p className="text-muted-foreground text-sm">No other products in the catalog share this product&apos;s ingredients.</p>
         ) : (
           <>
-            <AlternatesTable title="Close matches" rows={result.close} sourceCount={result.sourceCount} />
-            <AlternatesTable title="Partial matches" rows={result.partial} sourceCount={result.sourceCount} />
+            <AlternatesTable
+              title="Close matches"
+              productId={productId}
+              rows={result.close}
+              sourceCount={result.sourceCount}
+            />
+            <AlternatesTable
+              title="Partial matches"
+              productId={productId}
+              rows={result.partial}
+              sourceCount={result.sourceCount}
+            />
           </>
         )}
         <p className="text-muted-foreground text-xs">
@@ -38,7 +48,17 @@ export async function AlternatesSection({ productId }: { productId: string }) {
   );
 }
 
-function AlternatesTable({ title, rows, sourceCount }: { title: string; rows: Alternate[]; sourceCount: number }) {
+function AlternatesTable({
+  title,
+  productId,
+  rows,
+  sourceCount,
+}: {
+  title: string;
+  productId: string;
+  rows: Alternate[];
+  sourceCount: number;
+}) {
   if (rows.length === 0) return null;
   return (
     <div className="space-y-2">
@@ -71,6 +91,12 @@ function AlternatesTable({ title, rows, sourceCount }: { title: string; rows: Al
                 <div className="text-muted-foreground text-xs">
                   {[a.category, a.documentDate?.slice(0, 4)].filter(Boolean).join(" · ")}
                 </div>
+                <Link
+                  href={`/products/${productId}/compare/${a.id}`}
+                  className="text-muted-foreground text-xs underline-offset-4 hover:text-foreground hover:underline"
+                >
+                  Compare side by side
+                </Link>
               </TableCell>
               <TableCell className="whitespace-normal">
                 <span className="text-muted-foreground text-xs">{supplierRoleLabel(a.makerKind)} </span>

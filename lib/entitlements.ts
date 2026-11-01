@@ -40,7 +40,7 @@ export const PLANS: Record<PlanTier, PlanConfig> = {
   pro: {
     label: "Pro",
     price: "$49/mo",
-    description: "For EHS professionals and formulators.",
+    description: "For buyers, EHS professionals and formulators.",
     sdsViewsPerMonth: null,
     aiAlternatives: true,
     aiSearch: true,
