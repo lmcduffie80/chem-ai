@@ -10,8 +10,8 @@ export function SearchBox({ compact = false, defaultValue }: { compact?: boolean
       <Input
         name="q"
         defaultValue={defaultValue}
-        placeholder={compact ? "CAS number or name…" : "Search by CAS number, chemical name or synonym…"}
-        aria-label="Search chemicals"
+        placeholder={compact ? "Product, maker, CAS or name…" : "Search products, makers, chemicals or CAS numbers…"}
+        aria-label="Search products and chemicals"
         className={cn("pl-9", compact ? "h-8" : "h-12 text-base")}
       />
     </Form>

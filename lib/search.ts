@@ -124,3 +124,69 @@ export async function semanticSearch(embedding: number[], filters: SearchFilters
   `);
   return rows.map(toResult);
 }
+
+export type ProductSearchResult = {
+  id: string;
+  name: string;
+  category: string | null;
+  documentDate: string | null;
+  makerId: string;
+  maker: string;
+  makerKind: string;
+  sdsId: string | null;
+};
+
+/** Long queries are trimmed so the per-word conditions stay bounded. */
+const MAX_PRODUCT_QUERY_WORDS = 6;
+
+/**
+ * Products by name or maker: exact name > name prefix > every word in name or maker >
+ * fuzzy word match on name > fuzzy maker match. CAS-number queries return nothing.
+ */
+export async function searchProducts(
+  query: string,
+  limit = 25,
+  offset = 0,
+): Promise<{ total: number; results: ProductSearchResult[] }> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("search");
+
+  const q = query.trim().slice(0, 200);
+  if (!q || normalizeCas(q)) return { total: 0, results: [] };
+  const escape = (s: string) => s.replace(/[%_\\]/g, "\\$&");
+  const words = q.split(/\s+/).slice(0, MAX_PRODUCT_QUERY_WORDS);
+  const allWords = sql.join(
+    words.map((w) => sql`(p.name ilike ${`%${escape(w)}%`} or s.name ilike ${`%${escape(w)}%`})`),
+    sql` and `,
+  );
+
+  const { rows } = await db.execute<ProductSearchResult & { total: number }>(sql`
+    with cand as (
+      select p.id, 100.0 as score from products p where p.name ilike ${escape(q)}
+      union all
+      select p.id, 50 + 5.0 / (1 + length(p.name) / 10.0) from products p where p.name ilike ${`${escape(q)}%`}
+      union all
+      select p.id, 20 + 5 * word_similarity(${q}, p.name)
+      from products p join suppliers s on s.id = p.supplier_id
+      where ${allWords}
+      union all
+      select p.id, 10 * word_similarity(${q}, p.name) from products p where ${q} <% p.name
+      union all
+      select p.id, 8 * similarity(s.name, ${q})
+      from products p join suppliers s on s.id = p.supplier_id
+      where s.name % ${q}
+    ),
+    ranked as (select id, max(score) as score from cand group by id)
+    select p.id, p.name, p.category, p.document_date::text as "documentDate",
+      s.id as "makerId", s.name as maker, s.kind as "makerKind",
+      (select d.id from sds_documents d where d.product_id = p.id order by d.revision_date desc nulls last limit 1) as "sdsId",
+      count(*) over ()::int as total
+    from ranked r
+    join products p on p.id = r.id
+    join suppliers s on s.id = p.supplier_id
+    order by r.score desc, p.document_date desc nulls last, p.id
+    limit ${limit} offset ${offset}
+  `);
+  return { total: rows[0]?.total ?? 0, results: rows.map(({ total: _total, ...r }) => r) };
+}
