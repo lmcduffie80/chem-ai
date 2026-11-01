@@ -34,10 +34,13 @@ async function stage(localFile: string | undefined) {
 async function main() {
   const runId = await startRun("chemexpo", "script");
   let stats: IngestStats = {};
+  const temporaryPaths: string[] = [];
   try {
     const { pathname, temporary } = await stage(process.argv[2]);
+    if (temporary) temporaryPaths.push(pathname);
     console.log("staged", pathname);
     const plan = await planChemExpoProducts(pathname);
+    temporaryPaths.push(plan.selectedPath);
     stats = mergeStats(stats, plan.stats);
     console.log("plan", plan.stats);
     for (let partition = 0; partition < plan.partitions; partition++) {
@@ -51,10 +54,11 @@ async function main() {
     }
     stats = mergeStats(stats, await pruneChemExpo(runId));
     stats = mergeStats(stats, await summarizeChemExpo());
-    await cleanupChemExpo(temporary ? [plan.selectedPath, pathname] : [plan.selectedPath]);
     await finishRun(runId, stats);
+    await cleanupChemExpo(temporaryPaths);
     console.log("done", stats);
   } catch (error) {
+    await cleanupChemExpo(temporaryPaths);
     await failRun(runId, errorMessage(error), stats);
     throw error;
   }

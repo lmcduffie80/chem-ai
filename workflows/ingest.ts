@@ -151,9 +151,12 @@ export async function chemexpoWorkflow(trigger: string) {
   "use workflow";
   const runId = await startRun("chemexpo", trigger);
   let stats: IngestStats = {};
+  const temporaryPaths: string[] = [];
   try {
     const staged = await stageChemExpo();
+    if (!staged.origin.startsWith("blob:")) temporaryPaths.push(staged.pathname);
     const plan = await planChemExpoProducts(staged.pathname);
+    temporaryPaths.push(plan.selectedPath);
     stats = mergeStats(stats, plan.stats);
     for (let partition = 0; partition < plan.partitions; partition++) {
       const chunkPaths = await extractChemExpoProducts(staged.pathname, plan.selectedPath, partition, plan.partitions);
@@ -163,10 +166,11 @@ export async function chemexpoWorkflow(trigger: string) {
     }
     stats = mergeStats(stats, await pruneChemExpo(runId));
     stats = mergeStats(stats, await summarizeChemExpo());
-    await cleanupChemExpo([plan.selectedPath, ...(staged.origin.startsWith("blob:") ? [] : [staged.pathname])]);
     await finishRun(runId, stats);
+    await cleanupChemExpo(temporaryPaths);
     return stats;
   } catch (error) {
+    await cleanupChemExpo(temporaryPaths);
     await failRun(runId, errorMessage(error), stats);
     throw error;
   }

@@ -2,7 +2,7 @@ import { invalidateTags } from "./invalidate";
 import { isNewerDocument, productKey } from "./product-identity";
 import { del, get, put } from "@vercel/blob";
 import { parse as parseStream } from "csv-parse";
-import { and, eq, inArray, lt, notExists, sql } from "drizzle-orm";
+import { and, eq, exists, inArray, isNotNull, isNull, lt, notExists, or, sql } from "drizzle-orm";
 import { Unzip, UnzipInflate } from "fflate";
 import { Readable } from "node:stream";
 import { db, schema } from "@/db";
@@ -17,6 +17,8 @@ export const CHEMEXPO_COMPOSITION_URL = "https://comptox.epa.gov/chemexpo/dl_co_
 const EXTRACT_PARTITIONS = 4;
 /** A complete EPA file has ~300k distinct products; far fewer means a truncated or wrong download. */
 const MIN_EXPECTED_PRODUCTS = 100_000;
+/** Prune refuses to remove more than this share of the ChemExpo catalog in one run. */
+const MAX_PRUNE_SHARE = 0.3;
 const PRODUCTS_PER_CHUNK = 3000;
 const INSERT_BATCH = 1000;
 
@@ -322,7 +324,10 @@ export async function extractChemExpoProducts(pathname: string, selectedPath: st
 export async function upsertChemExpoChunk(chunkPath: string): Promise<IngestStats> {
   "use step";
   const blob = await get(chunkPath, { access: "private", useCache: false });
-  if (!blob || blob.statusCode !== 200) throw new Error(`Blob not found: ${chunkPath}`);
+  if (!blob || blob.statusCode !== 200) {
+    console.warn(`ChemExpo chunk ${chunkPath} not found; assuming it was already written`);
+    return { processed: 0 };
+  }
   const staged: StagedProduct[] = await new Response(blob.stream).json();
   const now = new Date();
 
@@ -339,8 +344,7 @@ export async function upsertChemExpoChunk(chunkPath: string): Promise<IngestStat
     .returning({ id: schema.suppliers.id, externalId: schema.suppliers.externalId });
   const supplierIdBySlug = new Map(suppliers.map((s) => [s.externalId, s.id]));
 
-  // Same external ID ⇒ same EPA document ⇒ same composition, so only newly inserted products get components.
-  const newProductIdByDoc = new Map<string, string>();
+  const stagedByProductId = new Map<string, StagedProduct>();
   let inserted = 0;
   let updated = 0;
   for (let i = 0; i < staged.length; i += INSERT_BATCH) {
@@ -369,40 +373,71 @@ export async function upsertChemExpoChunk(chunkPath: string): Promise<IngestStat
         },
       })
       .returning({ id: schema.products.id, externalId: schema.products.externalId, inserted: sql<boolean>`(xmax = 0)` });
+    const byDoc = new Map(staged.slice(i, i + INSERT_BATCH).map((p) => [String(p.doc), p]));
     for (const r of rows) {
-      if (r.inserted) {
-        newProductIdByDoc.set(r.externalId, r.id);
-        inserted++;
-      } else updated++;
+      stagedByProductId.set(r.id, byDoc.get(r.externalId)!);
+      if (r.inserted) inserted++;
+      else updated++;
     }
   }
 
-  const productIds = [...newProductIdByDoc.values()];
+  // Same external ID ⇒ same EPA document ⇒ same composition, so only products with missing or outdated components are rewritten.
+  const pc = schema.productComponents;
+  const productIds = [...stagedByProductId.keys()];
+  const needsComponents: string[] = [];
   for (let i = 0; i < productIds.length; i += INSERT_BATCH) {
-    await db
-      .delete(schema.productComponents)
-      .where(inArray(schema.productComponents.productId, productIds.slice(i, i + INSERT_BATCH)));
+    const rows = await db
+      .select({ id: schema.products.id })
+      .from(schema.products)
+      .where(
+        and(
+          inArray(schema.products.id, productIds.slice(i, i + INSERT_BATCH)),
+          or(
+            notExists(db.select({ id: pc.id }).from(pc).where(eq(pc.productId, schema.products.id))),
+            exists(
+              db
+                .select({ id: pc.id })
+                .from(pc)
+                .where(
+                  and(
+                    eq(pc.productId, schema.products.id),
+                    or(
+                      and(isNull(pc.weight), or(isNotNull(pc.minPct), isNotNull(pc.maxPct))),
+                      and(isNotNull(pc.chemicalId), isNotNull(pc.componentName)),
+                    ),
+                  ),
+                ),
+            ),
+          ),
+        ),
+      );
+    needsComponents.push(...rows.map((r) => r.id));
   }
 
-  const components = staged.flatMap((p) => {
-    const productId = newProductIdByDoc.get(String(p.doc));
-    if (!productId) return [];
-    return p.components.map(([casRn, chemicalId, componentName, minPct, maxPct, weight]) => ({
-      productId,
-      chemicalId,
-      casRn,
-      componentName,
-      minPct,
-      maxPct,
-      weight,
-    }));
-  });
-  for (let i = 0; i < components.length; i += INSERT_BATCH) {
-    await db.insert(schema.productComponents).values(components.slice(i, i + INSERT_BATCH));
+  let components = 0;
+  for (let i = 0; i < needsComponents.length; i += INSERT_BATCH) {
+    const ids = needsComponents.slice(i, i + INSERT_BATCH);
+    const values = ids.flatMap((productId) =>
+      stagedByProductId.get(productId)!.components.map(([casRn, chemicalId, componentName, minPct, maxPct, weight]) => ({
+        productId,
+        chemicalId,
+        casRn,
+        componentName,
+        minPct,
+        maxPct,
+        weight,
+      })),
+    );
+    const inserts = [];
+    for (let j = 0; j < values.length; j += INSERT_BATCH) {
+      inserts.push(db.insert(pc).values(values.slice(j, j + INSERT_BATCH)));
+    }
+    await db.batch([db.delete(pc).where(inArray(pc.productId, ids)), ...inserts]);
+    components += values.length;
   }
   await del(chunkPath);
 
-  return { processed: staged.length, inserted, updated, components: components.length };
+  return { processed: staged.length, inserted, updated, components };
 }
 
 /** Removes ChemExpo products not refreshed by this run, plus empty ChemExpo suppliers. */
@@ -413,6 +448,19 @@ export async function pruneChemExpo(runId: string): Promise<IngestStats> {
     .from(schema.ingestRuns)
     .where(eq(schema.ingestRuns.id, runId));
   if (!run) throw new Error(`Unknown ingest run ${runId}`);
+
+  const [{ total, stale }] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      stale: sql<number>`(count(*) filter (where ${lt(schema.products.updatedAt, run.startedAt)}))::int`,
+    })
+    .from(schema.products)
+    .where(eq(schema.products.source, CHEMEXPO_SOURCE));
+  if (total > 0 && stale / total > MAX_PRUNE_SHARE) {
+    throw new Error(
+      `ChemExpo prune would remove ${stale} of ${total} products (more than ${MAX_PRUNE_SHARE * 100}% of the catalog); the source file may be incomplete`,
+    );
+  }
 
   const removed = await db
     .delete(schema.products)
@@ -433,6 +481,12 @@ export async function pruneChemExpo(runId: string): Promise<IngestStats> {
 /** Rebuilds per-category product counts and ingredient frequencies from the loaded products. */
 export async function summarizeChemExpo(): Promise<IngestStats> {
   "use step";
+  const relinked = await db.execute(sql`
+    update product_components pc set chemical_id = c.id, component_name = null
+    from chemicals c
+    where pc.chemical_id is null and pc.cas_rn is not null and c.cas_rn = pc.cas_rn
+  `);
+
   const [, categories] = await db.batch([
     db.delete(schema.chemicalProductCategories).where(eq(schema.chemicalProductCategories.source, CHEMEXPO_SOURCE)),
     db.execute(sql`
@@ -457,11 +511,20 @@ export async function summarizeChemExpo(): Promise<IngestStats> {
   ]);
 
   invalidateTags(["chemicals", "search", "alternates"]);
-  return { categoryRows: categories.rowCount ?? 0, ingredientFrequencies: frequencies.rowCount ?? 0 };
+  return {
+    relinkedComponents: relinked.rowCount ?? 0,
+    categoryRows: categories.rowCount ?? 0,
+    ingredientFrequencies: frequencies.rowCount ?? 0,
+  };
 }
 
 /** Deletes per-run intermediates; admin-uploaded source files are kept. */
 export async function cleanupChemExpo(paths: string[]) {
   "use step";
-  if (paths.length) await del(paths);
+  if (!paths.length) return;
+  try {
+    await del(paths);
+  } catch (error) {
+    console.warn("ChemExpo cleanup failed", paths, error);
+  }
 }
