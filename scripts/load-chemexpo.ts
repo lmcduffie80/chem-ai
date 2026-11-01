@@ -6,6 +6,7 @@
 import { put } from "@vercel/blob";
 import { readFile } from "node:fs/promises";
 import {
+  cleanupChemExpo,
   extractChemExpoProducts,
   planChemExpoProducts,
   pruneChemExpo,
@@ -18,20 +19,23 @@ import { errorMessage, mergeStats } from "../lib/ingest/stats";
 import type { IngestStats } from "../db/schema";
 
 async function stage(localFile: string | undefined) {
-  if (!localFile) return (await stageChemExpo()).pathname;
+  if (!localFile) {
+    const staged = await stageChemExpo();
+    return { pathname: staged.pathname, temporary: !staged.origin.startsWith("blob:") };
+  }
   const blob = await put(`ingest/chemexpo/local-${Date.now()}.zip`, await readFile(localFile), {
     access: "private",
     addRandomSuffix: true,
     multipart: true,
   });
-  return blob.pathname;
+  return { pathname: blob.pathname, temporary: true };
 }
 
 async function main() {
   const runId = await startRun("chemexpo", "script");
   let stats: IngestStats = {};
   try {
-    const pathname = await stage(process.argv[2]);
+    const { pathname, temporary } = await stage(process.argv[2]);
     console.log("staged", pathname);
     const plan = await planChemExpoProducts(pathname);
     stats = mergeStats(stats, plan.stats);
@@ -47,6 +51,7 @@ async function main() {
     }
     stats = mergeStats(stats, await pruneChemExpo(runId));
     stats = mergeStats(stats, await summarizeChemExpo());
+    await cleanupChemExpo(temporary ? [plan.selectedPath, pathname] : [plan.selectedPath]);
     await finishRun(runId, stats);
     console.log("done", stats);
   } catch (error) {

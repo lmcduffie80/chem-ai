@@ -1,5 +1,6 @@
 import { sendRegulatoryAlerts } from "@/lib/alerts";
 import {
+  cleanupChemExpo,
   extractChemExpoProducts,
   planChemExpoProducts,
   pruneChemExpo,
@@ -151,17 +152,18 @@ export async function chemexpoWorkflow(trigger: string) {
   const runId = await startRun("chemexpo", trigger);
   let stats: IngestStats = {};
   try {
-    const { pathname } = await stageChemExpo();
-    const plan = await planChemExpoProducts(pathname);
+    const staged = await stageChemExpo();
+    const plan = await planChemExpoProducts(staged.pathname);
     stats = mergeStats(stats, plan.stats);
     for (let partition = 0; partition < plan.partitions; partition++) {
-      const chunkPaths = await extractChemExpoProducts(pathname, plan.selectedPath, partition, plan.partitions);
+      const chunkPaths = await extractChemExpoProducts(staged.pathname, plan.selectedPath, partition, plan.partitions);
       for (const chunkPath of chunkPaths) {
         stats = mergeStats(stats, await upsertChemExpoChunk(chunkPath));
       }
     }
     stats = mergeStats(stats, await pruneChemExpo(runId));
     stats = mergeStats(stats, await summarizeChemExpo());
+    await cleanupChemExpo([plan.selectedPath, ...(staged.origin.startsWith("blob:") ? [] : [staged.pathname])]);
     await finishRun(runId, stats);
     return stats;
   } catch (error) {
