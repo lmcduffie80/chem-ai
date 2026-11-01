@@ -1,17 +1,15 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { HazardBadge, ListBadge, SaferChoiceBadge, TscaBadge } from "@/components/chem-badges";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { type ChemicalDetail, getChemicalByCas } from "@/lib/chemicals";
 import { describeH } from "@/lib/ghs";
-import { formatPctRange, manufacturerSdsSearchUrl, supplierRoleLabel } from "@/lib/product-sources";
 import { REGULATORY_LIST_CODES, REGULATORY_LISTS } from "@/lib/reglists-meta";
 import { AlternativesSection } from "./alternatives-section";
+import { ProductsSection } from "./products-section";
 import { VendorsSection } from "./vendors-section";
 import { WatchButton } from "./watch-button";
 
@@ -26,17 +24,17 @@ export async function generateMetadata({ params }: PageProps<"/chemicals/[cas]">
   };
 }
 
-export default function ChemicalPage({ params }: PageProps<"/chemicals/[cas]">) {
+export default function ChemicalPage({ params, searchParams }: PageProps<"/chemicals/[cas]">) {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       <Suspense fallback={<ChemicalSkeleton />}>
-        <ChemicalContent params={params} />
+        <ChemicalContent params={params} searchParams={searchParams} />
       </Suspense>
     </div>
   );
 }
 
-async function ChemicalContent({ params }: Pick<PageProps<"/chemicals/[cas]">, "params">) {
+async function ChemicalContent({ params, searchParams }: Pick<PageProps<"/chemicals/[cas]">, "params" | "searchParams">) {
   const { cas } = await params;
   const chem = await getChemicalByCas(decodeURIComponent(cas));
   if (!chem) notFound();
@@ -47,7 +45,14 @@ async function ChemicalContent({ params }: Pick<PageProps<"/chemicals/[cas]">, "
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Hazards chem={chem} />
-          <Products chem={chem} />
+          <Suspense fallback={<Skeleton className="h-96 w-full" />}>
+            <ProductsSection
+              chemicalId={chem.id}
+              casRn={chem.casRn}
+              categories={chem.productCategories}
+              searchParams={searchParams}
+            />
+          </Suspense>
           <Suspense fallback={<Skeleton className="h-40 w-full" />}>
             <VendorsSection
               casRn={chem.casRn}
@@ -189,92 +194,6 @@ function Hazards({ chem }: { chem: ChemicalDetail }) {
               <p className="text-muted-foreground font-mono text-xs">{hazard.pStatements.join(", ")}</p>
             )}
           </>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function Products({ chem }: { chem: ChemicalDetail }) {
-  const total = Math.max(chem.totalProductCount, chem.products.length);
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Products, suppliers &amp; SDS</CardTitle>
-        <CardDescription>
-          {total === 0
-            ? "No products in the Chemspace catalog list this ingredient yet."
-            : `${total.toLocaleString()} product formulations reported to EPA list this ingredient${
-                chem.products.length < total ? `; the ${chem.products.length} most recent are shown` : ""
-              }. Click Find SDS for the manufacturer's current sheet.`}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {chem.productCategories.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {chem.productCategories.slice(0, 12).map((c) => (
-              <Badge key={`${c.source}:${c.category}`} variant="secondary" className="font-normal">
-                {c.category} · {c.productCount.toLocaleString()}
-              </Badge>
-            ))}
-          </div>
-        )}
-        {chem.products.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            Product listings come from EPA ChemExpo and supplier SDS feeds. See “Where to buy” for suppliers selling
-            this chemical, or upload your own SDS in a Team workspace.
-          </p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Product</TableHead>
-                <TableHead>Maker / source</TableHead>
-                <TableHead>Content</TableHead>
-                <TableHead>SDS</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {chem.products.map((p) => {
-                const sds = chem.sdsDocuments.find((d) => d.productId === p.productId);
-                return (
-                  <TableRow key={p.productId}>
-                    <TableCell className="max-w-xs min-w-48 whitespace-normal">
-                      <Link href={`/products/${p.productId}`} className="font-medium hover:underline">
-                        {p.productName}
-                      </Link>
-                      <div className="text-muted-foreground text-xs">
-                        {[p.category, p.sku, p.grade, p.purity, p.documentDate?.slice(0, 4)].filter(Boolean).join(" · ")}
-                      </div>
-                    </TableCell>
-                    <TableCell className="whitespace-normal">
-                      <span className="text-muted-foreground text-xs">{supplierRoleLabel(p.supplierKind)} </span>
-                      <Link href={`/suppliers/${p.supplierId}`} className="hover:underline">
-                        {p.supplierName}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">{formatPctRange(p.minPct, p.maxPct)}</TableCell>
-                    <TableCell>
-                      {sds ? (
-                        <Link href={`/sds/${sds.id}`} className="text-sm hover:underline">
-                          {sds.revisionDate ?? "View"}
-                        </Link>
-                      ) : (
-                        <a
-                          href={manufacturerSdsSearchUrl(p.productName, p.supplierName, p.supplierKind)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-sm whitespace-nowrap underline-offset-4 hover:underline"
-                        >
-                          Find SDS ↗
-                        </a>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
         )}
       </CardContent>
     </Card>
