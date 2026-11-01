@@ -20,6 +20,9 @@ export function SiteFooter() {
           </Link>
         </nav>
       </div>
+      <p className="mx-auto mt-4 max-w-7xl px-4 text-xs">
+        Powered by <span className="text-foreground font-medium">Agrovus</span>
+      </p>
     </footer>
   );
 }
