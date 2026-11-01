@@ -67,6 +67,24 @@ describe("ingredientWeights", () => {
     const w = ingredientWeights([{ chemicalId: 7, weight: 1 }], freq, 1000, WATER);
     expect(w.get(7)).toBeCloseTo(Math.log(1000));
   });
+
+  it("gives unreported ingredients an equal share of all ingredients", () => {
+    const w = ingredientWeights(
+      [
+        { chemicalId: 1, weight: 0.8 },
+        { chemicalId: 2, weight: null },
+      ],
+      freq,
+      1000,
+      WATER,
+    );
+    expect(w.get(1)).toBeCloseTo(0.8 * Math.log(100));
+    expect(w.get(2)).toBeCloseTo(0.5 * Math.log(10));
+  });
+
+  it("returns an empty map for no ingredients", () => {
+    expect(ingredientWeights([], freq, 1000, WATER).size).toBe(0);
+  });
 });
 
 describe("weightedJaccard", () => {
