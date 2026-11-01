@@ -61,7 +61,7 @@ Data sources that need configuration:
 - **Products (EPA ChemExpo/CPDat):** downloads EPA's public composition file weekly (about 1 GB unzipped, 400k documents). Repeat filings of the same product (same maker and name) are merged into the newest one, leaving roughly 325k products with full ingredient lists. These power the product lists on chemical pages and the alternates on product pages. EPA's server is slow; for the first load, download the zip yourself and run `pnpm load:chemexpo path/to/file.zip`, then `pnpm db:size` to check database size (about 640 MB after a full load). The pesticide inert list (`PEST_INERT`) comes from ChemExpo's list-presence file; load it with `pnpm load:reglist PEST_INERT`.
 - **Where to buy:** PubChem vendor listings, fetched on demand and cached for a week. No configuration needed.
 - **SDS feed:** `SDS_PROVIDER=generic-rest` with `SDS_PROVIDER_BASE_URL`/`SDS_PROVIDER_API_KEY`. The adapter contract is documented in `lib/sds/providers/generic-rest.ts`; write a thin shim for your vendor or add a new provider in `lib/sds/`. `SDS_PROVIDER=fixture` gives demo data and is refused in production.
-- **AI:** AI Gateway via OIDC. Alternatives use `AI_TEXT_MODEL`; embeddings (`AI_EMBEDDING_MODEL`) are optional but improve candidate recall. Free-tier gateway accounts cannot use Anthropic models or OpenAI embeddings.
+- **AI:** AI Gateway via OIDC. Alternatives and SDS parsing use `AI_TEXT_MODEL`; natural-language search uses the faster `AI_SEARCH_MODEL`; embeddings (`AI_EMBEDDING_MODEL`) are optional but improve candidate recall. Free-tier gateway accounts cannot use Anthropic models or OpenAI embeddings.
 
 ## Production configuration
 

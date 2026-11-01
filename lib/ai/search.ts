@@ -5,7 +5,7 @@ import { normalizeCas } from "@/lib/cas";
 import { REGULATORY_LIST_CODES, REGULATORY_LISTS, type RegulatoryListCode } from "@/lib/reglists-meta";
 import { type SearchFilters, type SearchResult, searchChemicals, semanticSearch } from "@/lib/search";
 import { recordUsage } from "@/lib/usage";
-import { EMBEDDING_MODEL, TEXT_MODEL } from "./models";
+import { EMBEDDING_MODEL, SEARCH_MODEL } from "./models";
 
 const listEnum = z.enum(REGULATORY_LIST_CODES as [string, ...string[]]);
 
@@ -27,7 +27,7 @@ export async function aiSearch(question: string, base: SearchFilters, viewer: Vi
 
   const [{ output }, { embedding }] = await Promise.all([
     generateText({
-      model: TEXT_MODEL,
+      model: SEARCH_MODEL,
       output: Output.object({ schema: querySchema }),
       system: [
         "You translate chemical-database questions into structured search filters.",
