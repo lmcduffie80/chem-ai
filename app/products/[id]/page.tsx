@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getProduct } from "@/lib/chemicals";
 import { CHEMEXPO_SOURCE, formatPctRange, manufacturerSdsSearchUrl, supplierRoleLabel } from "@/lib/product-sources";
+import { AlternatesSection } from "./alternates-section";
 
 export async function generateMetadata({ params }: PageProps<"/products/[id]">): Promise<Metadata> {
   const { id } = await params;
@@ -100,6 +101,10 @@ async function ProductContent({ params }: Pick<PageProps<"/products/[id]">, "par
           </Table>
         </CardContent>
       </Card>
+
+      <Suspense fallback={<Skeleton className="h-48 w-full" />}>
+        <AlternatesSection productId={product.id} />
+      </Suspense>
 
       <Card>
         <CardHeader>
