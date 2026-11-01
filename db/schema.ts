@@ -253,17 +253,20 @@ export const productComponents = pgTable(
       .references(() => products.id, { onDelete: "cascade" }),
     chemicalId: integer("chemical_id").references(() => chemicals.id, { onDelete: "set null" }),
     casRn: text("cas_rn"),
-    componentName: text("component_name").notNull(),
+    /** Raw ingredient name; null when `chemicalId` resolves, so pages use the chemical's preferred name. */
+    componentName: text("component_name"),
     minPct: real("min_pct"),
     maxPct: real("max_pct"),
+    /** Midpoint of the reported range as a fraction (0–1); 1 for single-ingredient products. */
+    weight: real("weight"),
   },
   (t) => [
     index("product_components_product_idx").on(t.productId),
-    index("product_components_chemical_idx").on(t.chemicalId),
+    index("product_components_chemical_idx").on(t.chemicalId, t.productId),
   ],
 );
 
-/** Full product counts per use category; `products` only holds a recent sample per chemical. */
+/** Product counts per general use category, rebuilt from loaded products after each ChemExpo load. */
 export const chemicalProductCategories = pgTable(
   "chemical_product_categories",
   {
@@ -276,6 +279,14 @@ export const chemicalProductCategories = pgTable(
   },
   (t) => [primaryKey({ columns: [t.chemicalId, t.source, t.category] })],
 );
+
+/** Number of products containing each chemical; down-weights ubiquitous ingredients when matching alternates. */
+export const chemicalDocFreq = pgTable("chemical_doc_freq", {
+  chemicalId: integer("chemical_id")
+    .primaryKey()
+    .references(() => chemicals.id, { onDelete: "cascade" }),
+  productCount: integer("product_count").notNull(),
+});
 
 export type SdsSection = { number: number; title: string; content: string };
 

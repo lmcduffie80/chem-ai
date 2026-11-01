@@ -80,7 +80,7 @@ async function ProductContent({ params }: Pick<PageProps<"/products/[id]">, "par
             <TableBody>
               {product.components.map((c, i) => (
                 <TableRow key={i}>
-                  <TableCell>{c.chemicalName ?? c.componentName}</TableCell>
+                  <TableCell>{c.chemicalName ?? c.componentName ?? c.casRn ?? "Unnamed ingredient"}</TableCell>
                   <TableCell className="font-mono text-xs">
                     {c.casRn ? (
                       <Link href={`/chemicals/${c.casRn}`} className="hover:underline">
