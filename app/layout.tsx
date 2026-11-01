@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
   title: { default: "Chemspace — Chemical reference database", template: "%s · Chemspace" },
   description:
-    "Look up every CAS number on EPA's TSCA inventory with hazards, regulatory listings, SDS documents, suppliers and AI-ranked safer alternatives.",
+    "Find alternate chemical products by ingredient, with makers, SDS links, hazards and regulatory listings for every CAS number on EPA's TSCA inventory.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

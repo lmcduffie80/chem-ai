@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { Building2, FileText, Leaf, Scale, Search, Webhook } from "lucide-react";
+import { ArrowLeftRight, Building2, Leaf, Scale, Search, Webhook } from "lucide-react";
 import { cacheLife } from "next/cache";
 import Link from "next/link";
 import { SearchBox } from "@/components/search-box";
@@ -8,11 +8,15 @@ import { db } from "@/db";
 
 const FEATURES = [
   { icon: Search, title: "Every EPA-registered CAS", body: "The full TSCA inventory, enriched with EPA CompTox and PubChem identity data and synonyms." },
-  { icon: FileText, title: "Licensed SDS library", body: "Current safety data sheets from a licensed feed, parsed into all 16 GHS sections." },
-  { icon: Building2, title: "Supplier details", body: "Who sells it, which grades, and how to reach their regulatory contacts." },
+  {
+    icon: ArrowLeftRight,
+    title: "Alternate products",
+    body: "Products with the same ingredients, ranked by how closely the formulation matches, with a side-by-side comparison.",
+  },
+  { icon: Building2, title: "Makers, suppliers and SDS", body: "Who makes and sells each product, with a link to the manufacturer's current SDS." },
   { icon: Leaf, title: "Safer alternatives", body: "Functional substitutes ranked by hazard reduction, Safer Choice status and AI review." },
   { icon: Scale, title: "Regulatory tracking", body: "SARA 313, CERCLA, HAP, Prop 65 and RCRA listings with change alerts on your watchlist." },
-  { icon: Webhook, title: "API for your systems", body: "Pull chemical, SDS and alternative data into EHS, ERP and product-stewardship tools." },
+  { icon: Webhook, title: "API for your systems", body: "Pull product, chemical and SDS data into ERP, procurement and EHS tools." },
 ];
 
 async function Stats() {
@@ -43,10 +47,11 @@ export default function HomePage() {
   return (
     <div className="mx-auto max-w-7xl px-4">
       <section className="mx-auto flex max-w-3xl flex-col items-center gap-6 py-20 text-center">
-        <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">The chemical reference your EHS team actually uses</h1>
+        <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">Find alternate chemical products by what&apos;s in them</h1>
         <p className="text-muted-foreground text-lg">
-          Look up any CAS number registered with the EPA. See hazards, regulatory listings, current SDS documents, who
-          supplies it, and safer alternatives — in one place.
+          Look up any CAS number registered with the EPA. See the products that contain it, alternate products with the
+          same ingredients, who makes them, their SDS, hazards and regulatory listings — for procurement, EHS and product
+          teams.
         </p>
         <div className="w-full max-w-2xl">
           <SearchBox />
@@ -81,7 +86,8 @@ export default function HomePage() {
       <section className="flex flex-col items-center gap-4 pb-20 text-center">
         <h2 className="text-2xl font-semibold">Built for teams</h2>
         <p className="text-muted-foreground max-w-xl">
-          Shared SDS libraries, site inventories, watchlists with regulatory alerts, and an API on Enterprise.
+          Shared SDS libraries, site inventories, watchlists with regulatory alerts, and an API on Enterprise, for
+          purchasing and safety teams alike.
         </p>
         <Button asChild>
           <Link href="/pricing">See plans</Link>

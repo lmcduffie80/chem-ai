@@ -9,7 +9,7 @@ import { PLANS } from "@/lib/entitlements";
 
 export const metadata: Metadata = {
   title: "Pricing",
-  description: "Chemspace plans for individuals, EHS teams and enterprise data programs.",
+  description: "Chemspace plans for individuals, procurement and EHS teams, and enterprise data programs.",
 };
 
 const ORDER: PlanTier[] = ["free", "pro", "team", "enterprise"];
