@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { requirePlatformAdmin } from "@/lib/admin";
 
 export const metadata: Metadata = {
@@ -16,7 +18,15 @@ const NAV = [
   { href: "/admin/usage", label: "Usage" },
 ];
 
-export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
+export default function AdminLayout({ children }: LayoutProps<"/admin">) {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-7xl px-4 py-8"><Skeleton className="h-96 w-full" /></div>}>
+      <AdminShell>{children}</AdminShell>
+    </Suspense>
+  );
+}
+
+async function AdminShell({ children }: { children: React.ReactNode }) {
   // Gate the whole section, including nav chrome, so non-admins get a plain 404.
   await requirePlatformAdmin();
 
