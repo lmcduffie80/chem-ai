@@ -23,13 +23,14 @@ ChemExpo holds about 407k documents, but the same product often appears in sever
 - When several documents share an identity, keep the one with the newest document date (ties go to the highest document ID). Its document ID becomes `products.external_id`, and its components are the product's components.
 - **Maker:** the supplier derived from the data source, as today. Retailer and database sources (Walmart, EWG, SIRI, …) stay as they are: the product name usually includes the brand, and we don't try to infer the real manufacturer.
 
-Expected size after deduplication: roughly 250–350k products and 2.5–3M component rows, adding about 0.6 GB. **This exceeds Neon's 0.5 GB free tier, so the Neon plan must be upgraded before the full load.**
+Expected size after deduplication: roughly 250–350k products and 2.5–3M component rows, adding about 0.6 GB for roughly 0.8 GB total. This fits Neon's Free plan (1 GB per project) with little headroom. Check the database size after the first full load, and move to Neon Launch (usage-based, about $15/month) before real customer traffic or if the size passes 0.9 GB.
 
 ### Loader changes
 
 - Replace the sampling pass (`planChemExpoSample`) with a deduplication pass that streams the CSV once, picks the winning document per product identity, and writes the selected document IDs to Blob. Memory stays bounded: each map entry is one identity key → (docId, date).
-- `extractChemExpoProducts` and `upsertChemExpoChunk` keep their chunked shape, with the chunk size unchanged at 3000 products.
-- `chemical_product_categories` is still computed in the first pass over **deduplicated** products, so the counts on the chemical page match the products we actually hold.
+- `extractChemExpoProducts` runs once per partition (`doc % 4`), so a single pass never holds more than about a quarter of the products in memory. It resolves CAS numbers to chemical IDs while extracting and writes compact chunks of 3000 products. `upsertChemExpoChunk` keeps its shape.
+- A new final step, `summarizeChemExpo`, rebuilds `chemical_product_categories` from the loaded (deduplicated) products in SQL, so the counts on the chemical page match the products we actually hold. It also rebuilds `chemical_doc_freq` and invalidates caches.
+- Single-ingredient products with no reported percentage get `weight = 1`.
 - Make `product_components.component_name` nullable and leave it null for components that resolved to a TSCA chemical (`chemical_id` set); pages display the chemical's preferred name instead. This saves about a quarter of the component table size. Unresolved components keep their raw name and CAS. Existing readers of `componentName` fall back to the joined chemical name.
 - Prune works as today: anything not touched by this run is deleted.
 
@@ -123,7 +124,7 @@ The list is paginated (50 per page) and filterable by product category (the exis
 - `GET /api/v1/chemicals/{cas}/products?category=&page=` returns a paginated product list with share and SDS status.
 - Both use the existing API-key auth, usage metering and plan entitlements, and are added to `openapi.json`.
 
-`Alternate` = `{ id, name, category, maker, makerKind, score, sharedCas[], addedCas[], sds: { id } | { searchUrl } }`.
+`Alternate` = `{ id, name, category, maker: { id, name, kind }, score, sharedCas[], sharedCount, addedCount, sds: { id, url } | { searchUrl }, url }`.
 
 ## Error handling
 
@@ -133,7 +134,7 @@ The list is paginated (50 per page) and filterable by product category (the exis
 
 ## Testing
 
-The project has no test runner yet; add Vitest (`pnpm test`) for the pure functions below. Keep scoring and identity normalization in a dependency-free module (`lib/alternates/score.ts`) so they can be tested without a database. The SQL query implements the same formula, and one integration check compares the two on a real product.
+The project has no test runner yet; add Vitest (`pnpm test`) for the pure functions below. Keep scoring (`lib/alternates/score.ts`) and product identity normalization (`lib/ingest/product-identity.ts`) in dependency-free modules so they can be tested without a database. The SQL query implements the same formula, and one integration check compares the two on a real product.
 
 - Unit tests for the scoring function: identical products score 1, disjoint products score 0, missing percentages fall back to equal shares, and water is ignored.
 - Unit tests for deduplication: same name and maker with different dates keeps the newest; differing punctuation or case collapses.
