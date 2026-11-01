@@ -7,9 +7,10 @@ import { put } from "@vercel/blob";
 import { readFile } from "node:fs/promises";
 import {
   extractChemExpoProducts,
-  planChemExpoSample,
+  planChemExpoProducts,
   pruneChemExpo,
   stageChemExpo,
+  summarizeChemExpo,
   upsertChemExpoChunk,
 } from "../lib/ingest/chemexpo";
 import { failRun, finishRun, startRun } from "../lib/ingest/runs";
@@ -32,17 +33,20 @@ async function main() {
   try {
     const pathname = await stage(process.argv[2]);
     console.log("staged", pathname);
-    const plan = await planChemExpoSample(pathname);
+    const plan = await planChemExpoProducts(pathname);
     stats = mergeStats(stats, plan.stats);
     console.log("plan", plan.stats);
-    const chunks = await extractChemExpoProducts(pathname, plan.selectedPath);
-    console.log("chunks", chunks.length);
-    for (const [i, chunk] of chunks.entries()) {
-      const result = await upsertChemExpoChunk(chunk);
-      stats = mergeStats(stats, result);
-      console.log(`chunk ${i + 1}/${chunks.length}`, result);
+    for (let partition = 0; partition < plan.partitions; partition++) {
+      const chunks = await extractChemExpoProducts(pathname, plan.selectedPath, partition, plan.partitions);
+      console.log(`partition ${partition + 1}/${plan.partitions}: ${chunks.length} chunks`);
+      for (const [i, chunk] of chunks.entries()) {
+        const result = await upsertChemExpoChunk(chunk);
+        stats = mergeStats(stats, result);
+        console.log(`  chunk ${i + 1}/${chunks.length}`, result);
+      }
     }
     stats = mergeStats(stats, await pruneChemExpo(runId));
+    stats = mergeStats(stats, await summarizeChemExpo());
     await finishRun(runId, stats);
     console.log("done", stats);
   } catch (error) {

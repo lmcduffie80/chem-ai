@@ -1,9 +1,10 @@
 import { sendRegulatoryAlerts } from "@/lib/alerts";
 import {
   extractChemExpoProducts,
-  planChemExpoSample,
+  planChemExpoProducts,
   pruneChemExpo,
   stageChemExpo,
+  summarizeChemExpo,
   upsertChemExpoChunk,
 } from "@/lib/ingest/chemexpo";
 import { enrichFromCompTox, selectChemicalsToEnrich } from "@/lib/ingest/comptox";
@@ -151,13 +152,16 @@ export async function chemexpoWorkflow(trigger: string) {
   let stats: IngestStats = {};
   try {
     const { pathname } = await stageChemExpo();
-    const plan = await planChemExpoSample(pathname);
+    const plan = await planChemExpoProducts(pathname);
     stats = mergeStats(stats, plan.stats);
-    const chunkPaths = await extractChemExpoProducts(pathname, plan.selectedPath);
-    for (const chunkPath of chunkPaths) {
-      stats = mergeStats(stats, await upsertChemExpoChunk(chunkPath));
+    for (let partition = 0; partition < plan.partitions; partition++) {
+      const chunkPaths = await extractChemExpoProducts(pathname, plan.selectedPath, partition, plan.partitions);
+      for (const chunkPath of chunkPaths) {
+        stats = mergeStats(stats, await upsertChemExpoChunk(chunkPath));
+      }
     }
     stats = mergeStats(stats, await pruneChemExpo(runId));
+    stats = mergeStats(stats, await summarizeChemExpo());
     await finishRun(runId, stats);
     return stats;
   } catch (error) {
