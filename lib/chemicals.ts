@@ -44,7 +44,6 @@ export async function getChemicalByCas(casInput: string) {
     hazards,
     listings,
     productCategories,
-    totalProductCount: productCategories.reduce((sum, c) => sum + c.productCount, 0),
   };
 }
 

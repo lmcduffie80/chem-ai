@@ -1,6 +1,11 @@
 import { apiError, withApiKey } from "@/lib/api";
 import { serializeChemicalProduct } from "@/lib/api-serializers";
-import { getChemicalProducts, PRODUCTS_PAGE_SIZE, productTotal } from "@/lib/chemical-products";
+import {
+  getChemicalProducts,
+  PRODUCTS_PAGE_SIZE,
+  parseProductsCategory,
+  parseProductsPage,
+} from "@/lib/chemical-products";
 import { getChemicalByCas } from "@/lib/chemicals";
 
 export const GET = withApiKey<RouteContext<"/api/v1/chemicals/[cas]/products">>(async (request, _api, { params }) => {
@@ -8,16 +13,20 @@ export const GET = withApiKey<RouteContext<"/api/v1/chemicals/[cas]/products">>(
   const chemical = await getChemicalByCas(cas);
   if (!chemical) return apiError(404, "not_found", `No chemical with CAS ${cas} on the TSCA inventory.`);
   const query = new URL(request.url).searchParams;
-  const category = query.get("category") || null;
-  const page = Math.max(1, Number.parseInt(query.get("page") ?? "1", 10) || 1);
-  const products = await getChemicalProducts(chemical.id, category, page);
+  const requested = query.get("category");
+  const category = parseProductsCategory(requested, chemical.productCategories);
+  if (requested && !category) {
+    return apiError(400, "invalid_category", `CAS ${cas} has no products in category "${requested}".`);
+  }
+  const page = parseProductsPage(query.get("page"));
+  const { total, products } = await getChemicalProducts(chemical.id, chemical.casRn, category, page);
   return Response.json({
     data: {
       casRn: chemical.casRn,
       category,
       page,
       pageSize: PRODUCTS_PAGE_SIZE,
-      total: productTotal(chemical.productCategories, category),
+      total,
       products: products.map(serializeChemicalProduct),
     },
   });

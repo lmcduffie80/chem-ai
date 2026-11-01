@@ -5,7 +5,10 @@ import { manufacturerSdsSearchUrl } from "@/lib/product-sources";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://chemspace.app";
 
-export function serializeChemical(c: ChemicalDetail, products: ChemicalProduct[]) {
+export function serializeChemical(
+  c: ChemicalDetail,
+  { total, products }: { total: number; products: ChemicalProduct[] },
+) {
   return {
     casRn: c.casRn,
     name: c.preferredName,
@@ -26,11 +29,17 @@ export function serializeChemical(c: ChemicalDetail, products: ChemicalProduct[]
     saferChoiceStatus: c.saferChoiceStatus,
     functionClasses: c.functionClasses,
     synonyms: c.synonyms.map((s) => s.name),
-    totalProducts: c.totalProductCount,
+    totalProducts: total,
     products: products.map(serializeChemicalProduct),
     sdsDocuments: products
       .filter((p) => p.sdsId)
-      .map((p) => ({ id: p.sdsId, productId: p.id, revisionDate: p.sdsRevisionDate })),
+      .map((p) => ({
+        id: p.sdsId,
+        productId: p.id,
+        revisionDate: p.sdsRevisionDate,
+        language: p.sdsLanguage,
+        region: p.sdsRegion,
+      })),
     url: `${APP_URL}/chemicals/${c.casRn}`,
   };
 }

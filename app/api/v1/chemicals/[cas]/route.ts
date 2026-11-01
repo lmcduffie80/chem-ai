@@ -7,6 +7,6 @@ export const GET = withApiKey<RouteContext<"/api/v1/chemicals/[cas]">>(async (_r
   const { cas } = await params;
   const chemical = await getChemicalByCas(cas);
   if (!chemical) return apiError(404, "not_found", `No chemical with CAS ${cas} on the TSCA inventory.`);
-  const products = await getChemicalProducts(chemical.id, null, 1);
+  const products = await getChemicalProducts(chemical.id, chemical.casRn, null, 1);
   return Response.json({ data: serializeChemical(chemical, products) });
 });

@@ -11,7 +11,9 @@ export const metadata: Metadata = {
 const ENDPOINTS = [
   { method: "GET", path: "/api/v1/chemicals/{cas}", description: "Identity, GHS hazards, regulatory lists, synonyms, products and SDS references." },
   { method: "GET", path: "/api/v1/search?q=acetone", description: "CAS, name and synonym search with list, hazard and function filters." },
+  { method: "GET", path: "/api/v1/chemicals/{cas}/products?category=&page=", description: "Products that list this chemical, 50 per page, filterable by product category." },
   { method: "GET", path: "/api/v1/alternatives/{cas}", description: "Ranked safer alternatives with hazard deltas and rationale." },
+  { method: "GET", path: "/api/v1/products/{id}/alternates", description: "Alternate products ranked by ingredient-composition similarity, with SDS links." },
   { method: "GET", path: "/api/v1/sds/{id}", description: "Parsed SDS: summary plus the 16 GHS sections." },
 ];
 

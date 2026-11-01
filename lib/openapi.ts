@@ -79,8 +79,66 @@ export function openApiDocument(serverUrl: string) {
             saferChoiceStatus: { type: ["string", "null"] },
             functionClasses: { type: "array", items: { type: "string" } },
             synonyms: { type: "array", items: { type: "string" } },
-            products: { type: "array", items: { type: "object" } },
-            sdsDocuments: { type: "array", items: { type: "object" } },
+            totalProducts: { type: "integer", description: "Catalog products listing this chemical" },
+            products: {
+              type: "array",
+              description: "First page of products; see /chemicals/{cas}/products for the rest",
+              items: { $ref: "#/components/schemas/ChemicalProduct" },
+            },
+            sdsDocuments: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string", format: "uuid" },
+                  productId: { type: "string", format: "uuid" },
+                  revisionDate: { type: ["string", "null"], format: "date" },
+                  language: { type: "string" },
+                  region: { type: "string" },
+                },
+              },
+            },
+            url: { type: "string", format: "uri" },
+          },
+        },
+        Supplier: {
+          type: "object",
+          properties: { id: { type: "string", format: "uuid" }, name: { type: "string" }, kind: { type: "string" } },
+        },
+        ChemicalProduct: {
+          type: "object",
+          properties: {
+            id: { type: "string", format: "uuid" },
+            name: { type: "string" },
+            category: { type: ["string", "null"] },
+            supplier: { $ref: "#/components/schemas/Supplier" },
+            minPct: { type: ["number", "null"] },
+            maxPct: { type: ["number", "null"] },
+            share: { type: ["number", "null"], description: "Reported weight fraction (0–1)" },
+            sdsId: { type: ["string", "null"], format: "uuid" },
+            url: { type: "string", format: "uri" },
+          },
+        },
+        Alternate: {
+          type: "object",
+          properties: {
+            id: { type: "string", format: "uuid" },
+            name: { type: "string" },
+            category: { type: ["string", "null"] },
+            maker: { $ref: "#/components/schemas/Supplier" },
+            score: { type: "number", minimum: 0, maximum: 1 },
+            sharedCas: { type: "array", items: { type: "string" } },
+            sharedCount: { type: "integer" },
+            addedCount: { type: "integer", description: "Ingredients in the alternate that the source product lacks" },
+            sds: {
+              oneOf: [
+                {
+                  type: "object",
+                  properties: { id: { type: "string", format: "uuid" }, url: { type: "string", format: "uri" } },
+                },
+                { type: "object", properties: { searchUrl: { type: "string", format: "uri" } } },
+              ],
+            },
             url: { type: "string", format: "uri" },
           },
         },
@@ -141,9 +199,38 @@ export function openApiDocument(serverUrl: string) {
           parameters: [
             casParam,
             { name: "category", in: "query", required: false, schema: { type: "string" }, description: 'General product category, e.g. "Personal care"' },
-            { name: "page", in: "query", required: false, schema: { type: "integer", minimum: 1, default: 1 } },
+            { name: "page", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 10000, default: 1 } },
           ],
-          responses: { "200": { description: "Products" }, ...errors },
+          responses: {
+            "200": {
+              description: "Products",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      data: {
+                        type: "object",
+                        properties: {
+                          casRn: { type: "string" },
+                          category: { type: ["string", "null"] },
+                          page: { type: "integer" },
+                          pageSize: { type: "integer" },
+                          total: { type: "integer" },
+                          products: { type: "array", items: { $ref: "#/components/schemas/ChemicalProduct" } },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            "400": {
+              description: "The chemical has no products in that category",
+              content: { "application/json": { schema: error } },
+            },
+            ...errors,
+          },
         },
       },
       "/products/{id}/alternates": {
@@ -152,7 +239,42 @@ export function openApiDocument(serverUrl: string) {
           description:
             "Other products sharing this product's ingredient CAS numbers, ranked by weighted composition similarity (0–1). Close matches score 0.5 or more. `reason` is `no_tsca_ingredients` when nothing can be matched.",
           parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
-          responses: { "200": { description: "Alternates" }, ...errors },
+          responses: {
+            "200": {
+              description: "Alternates",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      data: {
+                        type: "object",
+                        properties: {
+                          product: {
+                            type: "object",
+                            properties: {
+                              id: { type: "string", format: "uuid" },
+                              name: { type: "string" },
+                              maker: { type: "string" },
+                              url: { type: "string", format: "uri" },
+                            },
+                          },
+                          reason: { type: ["string", "null"], enum: ["no_tsca_ingredients", null] },
+                          close: { type: "array", items: { $ref: "#/components/schemas/Alternate" } },
+                          partial: { type: "array", items: { $ref: "#/components/schemas/Alternate" } },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            ...errors,
+            "503": {
+              description: "Alternates temporarily unavailable; retry shortly",
+              content: { "application/json": { schema: error } },
+            },
+          },
         },
       },
       "/sds/{id}": {

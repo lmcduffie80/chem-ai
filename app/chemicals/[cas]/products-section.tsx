@@ -2,7 +2,12 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getChemicalProducts, PRODUCTS_PAGE_SIZE, productTotal } from "@/lib/chemical-products";
+import {
+  getChemicalProducts,
+  PRODUCTS_PAGE_SIZE,
+  parseProductsCategory,
+  parseProductsPage,
+} from "@/lib/chemical-products";
 import type { ChemicalDetail } from "@/lib/chemicals";
 import { formatPctRange, manufacturerSdsSearchUrl, supplierRoleLabel } from "@/lib/product-sources";
 
@@ -15,10 +20,9 @@ type Props = {
 
 export async function ProductsSection({ chemicalId, casRn, categories, searchParams }: Props) {
   const params = await searchParams;
-  const category = typeof params.category === "string" && params.category ? params.category : null;
-  const page = Math.max(1, Number.parseInt(typeof params.page === "string" ? params.page : "1", 10) || 1);
-  const products = await getChemicalProducts(chemicalId, category, page);
-  const total = Math.max(productTotal(categories, category), (page - 1) * PRODUCTS_PAGE_SIZE + products.length);
+  const category = parseProductsCategory(typeof params.category === "string" ? params.category : null, categories);
+  const page = parseProductsPage(typeof params.page === "string" ? params.page : null);
+  const { total, products } = await getChemicalProducts(chemicalId, casRn, category, page);
   const pages = Math.max(1, Math.ceil(total / PRODUCTS_PAGE_SIZE));
 
   const href = (next: { category?: string | null; page?: number }) => {
