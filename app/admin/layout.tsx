@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { requirePlatformAdmin } from "@/lib/admin";
 
-export const metadata: Metadata = { title: { template: "%s · Admin · Allochemix", default: "Admin" }, robots: { index: false } };
+export const metadata: Metadata = {
+  title: { template: "%s · Admin · Allochemix", default: "Admin" },
+  robots: { index: false },
+};
 
 const NAV = [
   { href: "/admin", label: "Overview" },
@@ -12,7 +16,10 @@ const NAV = [
   { href: "/admin/usage", label: "Usage" },
 ];
 
-export default function AdminLayout({ children }: LayoutProps<"/admin">) {
+export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
+  // Gate the whole section, including nav chrome, so non-admins get a plain 404.
+  await requirePlatformAdmin();
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       <nav className="border-border/60 mb-6 flex items-center gap-1 overflow-x-auto border-b pb-px text-sm">

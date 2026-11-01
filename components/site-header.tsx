@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { AuthControls } from "@/components/auth-controls";
 import { SearchBox } from "@/components/search-box";
+import { getViewer } from "@/lib/auth";
 
 const NAV = [
   { href: "/search", label: "Search" },
@@ -30,9 +31,14 @@ export function SiteHeader() {
           <SearchBox compact />
         </div>
         <Suspense fallback={<div className="h-8 w-20" />}>
-          <AuthControls />
+          <AuthControlsLoader />
         </Suspense>
       </div>
     </header>
   );
+}
+
+async function AuthControlsLoader() {
+  const viewer = await getViewer();
+  return <AuthControls canManageOrg={viewer.orgRole === "admin"} />;
 }
