@@ -33,9 +33,22 @@ type Row = {
   hazard_score: number | null;
   tsca_status: string | null;
   safer_choice_status: string | null;
-  lists: RegulatoryListCode[] | null;
+  lists: RegulatoryListCode[] | string | null;
   score: number;
 };
+
+export function asLists(value: unknown): RegulatoryListCode[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter((v): v is RegulatoryListCode => typeof v === "string");
+  if (typeof value === "string") {
+    const inner = value.startsWith("{") && value.endsWith("}") ? value.slice(1, -1) : value;
+    return inner ? (inner.split(",").filter(Boolean) as RegulatoryListCode[]) : [];
+  }
+  if (typeof value === "object") {
+    return Object.values(value).filter((v): v is RegulatoryListCode => typeof v === "string");
+  }
+  return [];
+}
 
 function filterSql(filters: SearchFilters): SQL {
   const parts: SQL[] = [sql`true`];
@@ -60,7 +73,7 @@ function toResult(r: Row): SearchResult {
     hazardScore: r.hazard_score,
     tscaStatus: r.tsca_status,
     saferChoiceStatus: r.safer_choice_status,
-    lists: r.lists ?? [],
+    lists: asLists(r.lists),
     score: Number(r.score),
   };
 }

@@ -8,12 +8,13 @@ import { UpgradePrompt } from "@/components/upgrade-prompt";
 import { getViewer } from "@/lib/auth";
 import { can } from "@/lib/entitlements";
 import { normalizeCas } from "@/lib/cas";
-import { supplierRoleLabel } from "@/lib/product-sources";
+import { manufacturerSdsSearchUrl, supplierRoleLabel } from "@/lib/product-sources";
 import { REGULATORY_LIST_CODES, REGULATORY_LISTS, type RegulatoryListCode } from "@/lib/reglists-meta";
 import {
   type ProductSearchResult,
   type SearchFilters,
   type SearchResult,
+  asLists,
   searchChemicals,
   searchProducts,
 } from "@/lib/search";
@@ -166,20 +167,29 @@ function ProductList({ results }: { results: ProductSearchResult[] }) {
   return (
     <ul className="divide-border/60 divide-y rounded-lg border">
       {results.map((p) => (
-        <li key={p.id}>
-          <Link href={`/products/${p.id}`} className="hover:bg-muted/40 flex flex-col gap-1 p-4 transition-colors">
+        <li key={p.id} className="hover:bg-muted/40 flex items-start justify-between gap-3 p-4">
+          <Link href={`/products/${p.id}`} className="flex min-w-0 flex-col gap-1">
             <span className="font-medium">{p.name}</span>
             <span className="text-muted-foreground text-sm">
-              {[
-                `${supplierRoleLabel(p.makerKind)} ${p.maker}`,
-                p.category,
-                p.documentDate?.slice(0, 4),
-                p.sdsId ? "SDS on file" : null,
-              ]
+              {[`${supplierRoleLabel(p.makerKind)} ${p.maker}`, p.category, p.documentDate?.slice(0, 4)]
                 .filter(Boolean)
                 .join(" · ")}
             </span>
           </Link>
+          {p.sdsId ? (
+            <Link href={`/sds/${p.sdsId}`} className="text-sm whitespace-nowrap hover:underline">
+              SDS
+            </Link>
+          ) : (
+            <a
+              href={manufacturerSdsSearchUrl(p.name, p.maker, p.makerKind)}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm whitespace-nowrap hover:underline"
+            >
+              Find SDS ↗
+            </a>
+          )}
         </li>
       ))}
     </ul>
@@ -225,7 +235,7 @@ function ResultList({ results }: { results: SearchResult[] }) {
               <HazardBadge score={r.hazardScore} />
               <TscaBadge status={r.tscaStatus} />
               <SaferChoiceBadge status={r.saferChoiceStatus} />
-              {r.lists.map((code) => (
+              {asLists(r.lists).map((code) => (
                 <ListBadge key={code} code={code} />
               ))}
             </div>
