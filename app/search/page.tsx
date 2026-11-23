@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { HazardBadge, ListBadge, SaferChoiceBadge, TscaBadge } from "@/components/chem-badges";
+import { ChemChat } from "@/components/chem-chat";
 import { SearchBox } from "@/components/search-box";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UpgradePrompt } from "@/components/upgrade-prompt";
@@ -21,7 +22,7 @@ import {
 
 export const metadata: Metadata = { title: "Search" };
 
-type Mode = "standard" | "products" | "ai";
+type Mode = "standard" | "products" | "ai" | "chat";
 
 const PAGE_SIZE = 25;
 const PRODUCT_PREVIEW = 5;
@@ -59,9 +60,20 @@ async function SearchContent({ searchParams }: Pick<PageProps<"/search">, "searc
   const sp = await searchParams;
   const q = first(sp.q) ?? "";
   const modeParam = first(sp.mode);
-  const mode: Mode = modeParam === "ai" || modeParam === "products" ? modeParam : "standard";
+  const mode: Mode = modeParam === "ai" || modeParam === "products" || modeParam === "chat" ? modeParam : "standard";
   const page = Math.min(Math.max(1, Number(first(sp.page) ?? 1) || 1), MAX_PAGE);
   const filters = parseFilters(sp);
+
+  if (mode === "chat") {
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <ModeTabs q={q} mode={mode} sp={sp} />
+        <Suspense fallback={<ResultsSkeleton />}>
+          <ChatPanel q={q} />
+        </Suspense>
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-8 lg:grid-cols-[220px_1fr]">
@@ -237,8 +249,29 @@ async function AiResults({ q, filters }: { q: string; filters: SearchFilters }) 
     <>
       <p className="text-muted-foreground text-sm">Interpreted as: {interpretation}</p>
       <ResultList results={results} />
+      <p className="text-muted-foreground text-sm">
+        Not what your customer needs?{" "}
+        <Link href={`/search?${new URLSearchParams({ q, mode: "chat" })}`} className="text-foreground hover:underline">
+          Chat with the assistant about it →
+        </Link>
+      </p>
     </>
   );
+}
+
+async function ChatPanel({ q }: { q: string }) {
+  const viewer = await getViewer();
+  if (!can(viewer.plan, "aiSearch")) {
+    return (
+      <UpgradePrompt
+        plan="pro"
+        signedIn={Boolean(viewer.userId)}
+        title="Chat is a Pro feature"
+        description="Describe a customer's need and get chemicals and products you can offer from the Allochemix database."
+      />
+    );
+  }
+  return <ChemChat initialQuestion={q} />;
 }
 
 function ResultList({ results }: { results: SearchResult[] }) {
@@ -295,6 +328,7 @@ function ModeTabs({ q, mode, sp }: { q: string; mode: Mode; sp: Params }) {
       {tab("standard", "All")}
       {tab("products", "Products")}
       {tab("ai", "Natural language (Pro)")}
+      {tab("chat", "Chat (Pro)")}
     </div>
   );
 }
